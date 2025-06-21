@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 interface RealTimeData {
   forecastAccuracy: number;
@@ -25,6 +25,86 @@ export const useRealTimeData = () => {
 
   const [isConnected, setIsConnected] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const connectWebSocket = useCallback(() => {
+    try {
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const wsUrl = `${protocol}//${window.location.host}/ws`;
+      
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        console.log('WebSocket connected');
+        setIsConnected(true);
+        if (reconnectTimeoutRef.current) {
+          clearTimeout(reconnectTimeoutRef.current);
+          reconnectTimeoutRef.current = null;
+        }
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          
+          if (message.type === 'data_update' && message.data) {
+            const { table, operation, data: updateData } = message.data;
+            
+            if (table === 'system_metrics' && operation === 'INSERT') {
+              setData({
+                forecastAccuracy: updateData.forecast_accuracy || 87.4,
+                onTimeDelivery: updateData.on_time_delivery || 94.2,
+                carbonFootprint: updateData.carbon_footprint || 2.8,
+                inventoryTurnover: updateData.inventory_turnover || 12.3,
+                activeOrders: updateData.active_orders || 1847,
+                routesOptimized: updateData.routes_optimized || 342,
+                anomaliesDetected: updateData.anomalies_detected || 3,
+                costSavings: updateData.cost_savings || 284750
+              });
+              setLastUpdate(new Date());
+            }
+          }
+        } catch (error) {
+          console.error('Error parsing WebSocket message:', error);
+        }
+      };
+
+      ws.onclose = () => {
+        console.log('WebSocket disconnected');
+        setIsConnected(false);
+        wsRef.current = null;
+        
+        // Attempt to reconnect after 3 seconds
+        reconnectTimeoutRef.current = setTimeout(() => {
+          connectWebSocket();
+        }, 3000);
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        setIsConnected(false);
+      };
+
+    } catch (error) {
+      console.error('Failed to create WebSocket connection:', error);
+      setIsConnected(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    connectWebSocket();
+
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+    };
+  }, [connectWebSocket]);
 
   const updateData = useCallback(() => {
     setData(prev => ({
@@ -40,31 +120,18 @@ export const useRealTimeData = () => {
     setLastUpdate(new Date());
   }, []);
 
+  // Fallback: Update data every 5 seconds when not connected
   useEffect(() => {
-    // Simulate WebSocket connection
-    setIsConnected(true);
-    
-    // Update data every 3 seconds
-    const interval = setInterval(updateData, 3000);
-
-    // Simulate occasional connection issues
-    const connectionCheck = setInterval(() => {
-      if (Math.random() > 0.95) {
-        setIsConnected(false);
-        setTimeout(() => setIsConnected(true), 2000);
-      }
-    }, 10000);
-
-    return () => {
-      clearInterval(interval);
-      clearInterval(connectionCheck);
-    };
-  }, [updateData]);
+    if (!isConnected) {
+      const interval = setInterval(updateData, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [isConnected, updateData]);
 
   return {
     data,
     isConnected,
     lastUpdate,
-    refresh: updateData
+    reconnect: connectWebSocket
   };
 };

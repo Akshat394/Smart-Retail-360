@@ -1,0 +1,50 @@
+Of course. After connecting your application to a PostgreSQL database, enabling real-time functionality involves having your backend detect database changes and "push" those changes to your frontend instantly. The best way to achieve this is typically with **WebSockets**.
+
+Here’s a conceptual breakdown and the kinds of prompts and commands you can use to build this out, whether you're working with an AI assistant or implementing it yourself.
+
+### Core Architecture for Real-Time Functionality
+
+Your system will generally have three parts working together:
+
+1.  **PostgreSQL Database**: Uses its native `LISTEN`/`NOTIFY` feature to announce when data has changed.
+2.  **Backend Server (e.g., your Python API)**: Listens for notifications from Postgres and runs a WebSocket server. When it gets a notification, it relays the message to all connected clients.
+3.  **Frontend Client (React)**: Connects to the WebSocket server and updates the UI in real-time as it receives messages.
+
+Here is a diagram illustrating this flow:
+
+
+Ran tool
+Here are the specific prompts and steps you can take for each part of the stack.
+
+### 1. PostgreSQL: Announcing Changes
+
+First, you need to make Postgres announce when data changes. You can do this by creating a function and a trigger.
+
+**Prompts to your AI assistant:**
+
+*   "Create a PostgreSQL trigger function that sends a `NOTIFY` event with the new data as a JSON payload. The channel should be named `data_updates`."
+*   "Attach the trigger I just created to my `inventory` table, so it fires whenever a row is inserted or updated."
+
+### 2. Backend: Listening and Pushing Updates
+
+Your backend needs to listen for the `NOTIFY` signals from Postgres and manage the WebSocket connections to your clients. Your `services/api/main.py` is a great place for this logic.
+
+**Prompts to your AI assistant:**
+
+*   "In my Python application (`services/api/main.py`), show me how to use the `websockets` library to create a WebSocket server."
+*   "How can my Python backend connect to PostgreSQL and `LISTEN` on the `data_updates` channel asynchronously?"
+*   "Combine these concepts: write the Python code to listen for Postgres notifications and broadcast any received messages to all connected WebSocket clients."
+*   "How do I update my `Dockerfile` and `docker-compose.yml` to expose the port for the WebSocket server?"
+
+### 3. Frontend: Receiving and Displaying Updates
+
+Finally, your React frontend needs to connect to the WebSocket server and update the UI when it gets a message. The existing hook at `src/hooks/useRealTimeData.ts` is the perfect place to implement this logic.
+
+**Prompts to your AI assistant:**
+
+*   "Modify my custom hook `src/hooks/useRealTimeData.ts`. Instead of its current implementation, make it connect to my WebSocket server at `ws://localhost:8001`."
+*   "In the `useRealTimeData` hook, how do I handle incoming messages from the WebSocket and store them in a state variable?"
+*   "Show me how to use the data from the updated `useRealTimeData` hook in my `Dashboard.tsx` component to display real-time information."
+*   "How can I make my React components update efficiently when new data arrives from the WebSocket, without causing unnecessary re-renders?"
+
+By following this structure and using these prompts, you can guide an AI to build out the real-time functionality for your application. This approach is far more efficient and scalable than constantly polling the database from the frontend.

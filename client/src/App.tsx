@@ -12,10 +12,10 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Simulate initial data loading
+    // Quick loading for better UX
     const timer = setTimeout(() => {
       setIsLoading(false);
-    }, 2000);
+    }, 500);
 
     return () => clearTimeout(timer);
   }, []);

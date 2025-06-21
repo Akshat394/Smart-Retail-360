@@ -103,6 +103,7 @@ SmartRetail360 is a comprehensive supply chain orchestration platform that combi
 Changelog:
 - June 21, 2025. Initial setup
 - June 21, 2025. Database integration completed - PostgreSQL database added with Drizzle ORM
+- June 21, 2025. Real-time functionality implemented - WebSocket server with PostgreSQL LISTEN/NOTIFY
 ```
 
 ## User Preferences
