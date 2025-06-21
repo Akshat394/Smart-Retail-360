@@ -105,6 +105,7 @@ Changelog:
 - June 21, 2025. Database integration completed - PostgreSQL database added with Drizzle ORM
 - June 21, 2025. Real-time functionality implemented - WebSocket server with PostgreSQL LISTEN/NOTIFY
 - June 21, 2025. Authentication system implemented - Multi-role user management with session-based auth
+- June 21, 2025. Production user accounts added - Real team member credentials configured with role-based access
 ```
 
 ## User Preferences
@@ -112,3 +113,15 @@ Changelog:
 ```
 Preferred communication style: Simple, everyday language.
 ```
+
+## Production User Accounts
+
+The following team members have been configured with access to the system:
+
+- **Akshat Trivedi** (akshattrivedi394@gmail.com) - System Administrator
+- **Arushi Gupta** (arushigupta1818@gmail.com) - Executive/Manager  
+- **Abhishek Srivastava** (abhisheksriv6387@gmail.com) - Operations Manager
+- **Tanveer Hussain Khan** (tanveerhk.it@gmail.com) - Data Analyst/Forecasting Specialist
+- **Arushi Gupta** (arushigupta1212@gmail.com) - Supply Chain Planner
+
+Each user has role-specific permissions for their assigned responsibilities in the supply chain management system.

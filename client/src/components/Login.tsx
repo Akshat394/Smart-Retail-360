@@ -115,15 +115,17 @@ const Login: React.FC = () => {
           </motion.button>
         </form>
 
-        {/* Demo Credentials */}
+        {/* User Credentials */}
         <div className="mt-8 p-4 bg-gray-700/50 rounded-lg border border-gray-600">
-          <h3 className="text-sm font-semibold text-gray-300 mb-2">Demo Accounts:</h3>
-          <div className="space-y-1 text-xs text-gray-400">
-            <div>Admin: admin / admin123</div>
-            <div>Manager: manager / manager123</div>
-            <div>Operations: ops / ops123</div>
-            <div>Analyst: analyst / analyst123</div>
+          <h3 className="text-sm font-semibold text-gray-300 mb-3">User Accounts:</h3>
+          <div className="space-y-2 text-xs text-gray-400">
+            <div><strong>Admin:</strong> akshattrivedi394</div>
+            <div><strong>Manager:</strong> arushigupta1818</div>
+            <div><strong>Operations:</strong> abhisheksriv6387</div>
+            <div><strong>Analyst:</strong> tanveerhk</div>
+            <div><strong>Planner:</strong> arushigupta1212</div>
           </div>
+          <p className="text-xs text-gray-500 mt-3">Use your assigned credentials to log in</p>
         </div>
       </motion.div>
     </div>
