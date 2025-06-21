@@ -1,12 +1,36 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { MapPin, Navigation, Clock, Truck, AlertCircle, CheckCircle, RefreshCw } from 'lucide-react';
+import { MapPin, Navigation, Clock, Truck, AlertCircle, CheckCircle, RefreshCw, Plus } from 'lucide-react';
+import { apiService } from '../services/api';
+import { useAuth } from '../hooks/useAuth';
+import DriverManagement from './DriverManagement';
 
 const Routes: React.FC = () => {
+  const { user } = useAuth();
   const [selectedRoute, setSelectedRoute] = useState<string | null>(null);
   const [optimizationMode, setOptimizationMode] = useState<'fastest' | 'eco' | 'balanced'>('balanced');
+  const [routes, setRoutes] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [activeView, setActiveView] = useState<'routes' | 'drivers'>('routes');
 
-  const routes = [
+  const canManageRoutes = user && ['admin', 'manager', 'operations'].includes(user.role);
+
+  useEffect(() => {
+    loadRoutes();
+  }, []);
+
+  const loadRoutes = async () => {
+    try {
+      const data = await apiService.getRoutes();
+      setRoutes(data);
+    } catch (error) {
+      console.error('Failed to load routes:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const mockRoutes = [
     {
       id: 'RT-001',
       destination: 'Downtown Distribution Center',
@@ -111,6 +135,10 @@ const Routes: React.FC = () => {
       default: return <MapPin className="w-4 h-4" />;
     }
   };
+
+  if (activeView === 'drivers') {
+    return <DriverManagement />;
+  }
 
   return (
     <div className="p-6 space-y-6 bg-gray-900 min-h-screen">

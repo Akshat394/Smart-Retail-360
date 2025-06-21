@@ -1,3 +1,5 @@
+import { apiRequest } from '../hooks/useAuth';
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 class ApiService {
@@ -5,19 +7,7 @@ class ApiService {
     const url = `${API_BASE_URL}${endpoint}`;
     
     try {
-      const response = await fetch(url, {
-        headers: {
-          'Content-Type': 'application/json',
-          ...options?.headers,
-        },
-        ...options,
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      return await response.json();
+      return await apiRequest(url, options);
     } catch (error) {
       console.error(`API request failed for ${endpoint}:`, error);
       throw error;
@@ -42,6 +32,48 @@ class ApiService {
 
   async getSystemHealth() {
     return this.request('/system-health');
+  }
+
+  async getDrivers() {
+    return this.request('/drivers');
+  }
+
+  async createDriver(driver: any) {
+    return this.request('/drivers', {
+      method: 'POST',
+      body: JSON.stringify(driver),
+    });
+  }
+
+  async updateDriver(id: number, updates: any) {
+    return this.request(`/drivers/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    });
+  }
+
+  async deleteDriver(id: number) {
+    return this.request(`/drivers/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getRoutes() {
+    return this.request('/routes');
+  }
+
+  async createRoute(route: any) {
+    return this.request('/routes', {
+      method: 'POST',
+      body: JSON.stringify(route),
+    });
+  }
+
+  async updateRoute(id: number, updates: any) {
+    return this.request(`/routes/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    });
   }
 
   async getDemandForecast() {

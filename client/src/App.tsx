@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { AuthProvider, useAuth } from './hooks/useAuth';
+import Login from './components/Login';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import Routes from './components/Routes';
@@ -7,18 +9,9 @@ import Analytics from './components/Analytics';
 import DigitalTwin from './components/DigitalTwin';
 import Settings from './components/Settings';
 
-function App() {
+const AppContent = () => {
+  const { isAuthenticated, isLoading } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    // Quick loading for better UX
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 500);
-
-    return () => clearTimeout(timer);
-  }, []);
 
   if (isLoading) {
     return (
@@ -55,6 +48,10 @@ function App() {
     );
   }
 
+  if (!isAuthenticated) {
+    return <Login />;
+  }
+
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
@@ -87,6 +84,14 @@ function App() {
         </motion.div>
       </main>
     </div>
+  );
+};
+
+function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
 

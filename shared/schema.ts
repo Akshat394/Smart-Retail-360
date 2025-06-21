@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, real, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, real, jsonb, varchar } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -6,6 +6,53 @@ export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
+  email: text("email").notNull().unique(),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  role: text("role").notNull().default("viewer"), // admin, manager, operations, analyst, planner, viewer
+  isActive: boolean("is_active").notNull().default(true),
+  lastLogin: timestamp("last_login"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const drivers = pgTable("drivers", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  email: text("email"),
+  phone: text("phone"),
+  licenseNumber: text("license_number").notNull().unique(),
+  vehicleId: text("vehicle_id"),
+  status: text("status").notNull().default("available"), // available, assigned, off_duty
+  location: jsonb("location"), // { lat, lng }
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const routes = pgTable("routes", {
+  id: serial("id").primaryKey(),
+  routeId: text("route_id").notNull().unique(),
+  driverId: integer("driver_id").references(() => drivers.id),
+  destination: text("destination").notNull(),
+  status: text("status").notNull().default("planned"), // planned, active, completed, cancelled
+  optimizationMode: text("optimization_mode").notNull().default("balanced"), // fastest, eco, balanced
+  estimatedTime: integer("estimated_time"), // minutes
+  distance: real("distance"), // km
+  fuelCost: real("fuel_cost"),
+  co2Emission: real("co2_emission"),
+  stops: integer("stops").default(0),
+  optimizationSavings: real("optimization_savings"),
+  coordinates: jsonb("coordinates"), // { lat, lng }
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const userSessions = pgTable("user_sessions", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  sessionToken: text("session_token").notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const inventory = pgTable("inventory", {
@@ -37,9 +84,28 @@ export const events = pgTable("events", {
   timestamp: timestamp("timestamp").defaultNow().notNull(),
 });
 
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
+export const insertUserSchema = createInsertSchema(users).omit({
+  id: true,
+  lastLogin: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const loginUserSchema = z.object({
+  username: z.string().min(3),
+  password: z.string().min(6),
+});
+
+export const insertDriverSchema = createInsertSchema(drivers).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertRouteSchema = createInsertSchema(routes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
 });
 
 export const insertInventorySchema = createInsertSchema(inventory).omit({
@@ -58,10 +124,16 @@ export const insertEventSchema = createInsertSchema(events).omit({
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
+export type LoginUser = z.infer<typeof loginUserSchema>;
 export type User = typeof users.$inferSelect;
+export type InsertDriver = z.infer<typeof insertDriverSchema>;
+export type Driver = typeof drivers.$inferSelect;
+export type InsertRoute = z.infer<typeof insertRouteSchema>;
+export type Route = typeof routes.$inferSelect;
 export type InsertInventory = z.infer<typeof insertInventorySchema>;
 export type Inventory = typeof inventory.$inferSelect;
 export type InsertSystemMetrics = z.infer<typeof insertSystemMetricsSchema>;
 export type SystemMetrics = typeof systemMetrics.$inferSelect;
 export type InsertEvent = z.infer<typeof insertEventSchema>;
 export type Event = typeof events.$inferSelect;
+export type UserSession = typeof userSessions.$inferSelect;

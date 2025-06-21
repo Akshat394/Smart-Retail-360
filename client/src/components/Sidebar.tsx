@@ -8,8 +8,11 @@ import {
   Activity,
   Zap,
   Database,
-  TrendingUp
+  TrendingUp,
+  LogOut,
+  User
 } from 'lucide-react';
+import { useAuth } from '../hooks/useAuth';
 
 interface SidebarProps {
   activeTab: string;
@@ -25,6 +28,31 @@ const menuItems = [
 ];
 
 const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
+  const { user, logout } = useAuth();
+
+  // Filter menu items based on user role
+  const getFilteredMenuItems = () => {
+    if (!user) return [];
+    
+    const rolePermissions = {
+      admin: ['dashboard', 'routes', 'analytics', 'digital-twin', 'settings'],
+      manager: ['dashboard', 'routes', 'analytics', 'digital-twin', 'settings'],
+      operations: ['dashboard', 'routes', 'settings'],
+      analyst: ['dashboard', 'analytics', 'digital-twin'],
+      planner: ['dashboard', 'analytics', 'digital-twin', 'settings'],
+      viewer: ['dashboard']
+    };
+
+    const allowedTabs = rolePermissions[user.role as keyof typeof rolePermissions] || ['dashboard'];
+    return menuItems.filter(item => allowedTabs.includes(item.id));
+  };
+
+  const filteredMenuItems = getFilteredMenuItems();
+
+  const handleLogout = () => {
+    logout();
+  };
+
   return (
     <div className="w-64 bg-gray-800 border-r border-gray-700 flex flex-col">
       {/* Logo */}
@@ -79,10 +107,25 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
         </div>
       </div>
 
+      {/* User Info */}
+      <div className="p-4 border-b border-gray-700">
+        <div className="flex items-center space-x-3">
+          <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center">
+            <User className="w-5 h-5 text-white" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-white truncate">
+              {user?.firstName} {user?.lastName}
+            </p>
+            <p className="text-xs text-gray-400 capitalize">{user?.role}</p>
+          </div>
+        </div>
+      </div>
+
       {/* Navigation */}
       <nav className="flex-1 p-4">
         <ul className="space-y-2">
-          {menuItems.map((item, index) => {
+          {filteredMenuItems.map((item, index) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
             
@@ -118,12 +161,17 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
         </ul>
       </nav>
 
-      {/* Footer */}
+      {/* Logout Button */}
       <div className="p-4 border-t border-gray-700">
-        <div className="text-xs text-gray-500 text-center">
-          <p>v1.0.0 • Production</p>
-          <p className="mt-1">© 2024 SmartRetail360</p>
-        </div>
+        <motion.button
+          onClick={handleLogout}
+          className="w-full flex items-center space-x-3 px-4 py-3 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-all duration-200"
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+        >
+          <LogOut className="w-5 h-5" />
+          <span className="text-sm font-medium">Sign Out</span>
+        </motion.button>
       </div>
     </div>
   );
