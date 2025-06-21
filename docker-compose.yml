@@ -1,0 +1,234 @@
+version: '3.8'
+
+services:
+  # Hadoop Ecosystem
+  hadoop-namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: hadoop-namenode
+    ports:
+      - "9870:9870"
+      - "9000:9000"
+    environment:
+      - CLUSTER_NAME=hadoop-cluster
+      - CORE_CONF_fs_defaultFS=hdfs://hadoop-namenode:9000
+    volumes:
+      - hadoop_namenode:/hadoop/dfs/name
+    networks:
+      - smartretail-network
+    mem_limit: 1g
+
+  hadoop-datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: hadoop-datanode
+    ports:
+      - "9864:9864"
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://hadoop-namenode:9000
+    volumes:
+      - hadoop_datanode:/hadoop/dfs/data
+    networks:
+      - smartretail-network
+    depends_on:
+      - hadoop-namenode
+    mem_limit: 1g
+
+  hadoop-resourcemanager:
+    image: bde2020/hadoop-resourcemanager:2.0.0-hadoop3.2.1-java8
+    container_name: hadoop-resourcemanager
+    ports:
+      - "8088:8088"
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://hadoop-namenode:9000
+      - YARN_CONF_yarn_resourcemanager_hostname=hadoop-resourcemanager
+    networks:
+      - smartretail-network
+    depends_on:
+      - hadoop-namenode
+    mem_limit: 1g
+
+  # Apache Kafka
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zk_data:/var/lib/zookeeper/data
+      - zk_logs:/var/lib/zookeeper/log
+    networks:
+      - smartretail-network
+    mem_limit: 512m
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    networks:
+      - smartretail-network
+    depends_on:
+      - zookeeper
+    mem_limit: 1g
+
+  # HBase
+  hbase:
+    image: harisekhon/hbase:1.4
+    container_name: hbase
+    ports:
+      - "16010:16010"
+      - "16020:16020"
+      - "16030:16030"
+    environment:
+      - HBASE_CONF_hbase_rootdir=hdfs://hadoop-namenode:9000/hbase
+      - HBASE_CONF_hbase_cluster_distributed=false
+      - HBASE_CONF_hbase_zookeeper_quorum=hbase
+    volumes:
+      - hbase_data:/hbase-data
+    networks:
+      - smartretail-network
+    depends_on:
+      - hadoop-namenode
+    mem_limit: 1g
+
+  # MongoDB
+  mongodb:
+    image: mongo:6.0
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: smartretail2024
+    volumes:
+      - mongodb_data:/data/db
+      - ./scripts/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    networks:
+      - smartretail-network
+    mem_limit: 512m
+
+  # Redis for message queuing
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - smartretail-network
+    mem_limit: 256m
+
+  # Apache Spark
+  spark-master:
+    image: bitnami/spark:3.5
+    container_name: spark-master
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+    environment:
+      - SPARK_MODE=master
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+    volumes:
+      - ./spark-jobs:/opt/spark-jobs
+    networks:
+      - smartretail-network
+    mem_limit: 1g
+
+  spark-worker:
+    image: bitnami/spark:3.5
+    container_name: spark-worker
+    ports:
+      - "8081:8081"
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=1G
+      - SPARK_WORKER_CORES=2
+    networks:
+      - smartretail-network
+    depends_on:
+      - spark-master
+    mem_limit: 1g
+
+  # FastAPI Backend
+  api-service:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    container_name: api-service
+    ports:
+      - "8000:8000"
+    environment:
+      - MONGODB_URL=mongodb://admin:smartretail2024@mongodb:27017
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - HBASE_HOST=hbase
+      - REDIS_URL=redis://redis:6379
+    networks:
+      - smartretail-network
+    depends_on:
+      - mongodb
+      - kafka
+      - hbase
+      - redis
+    mem_limit: 512m
+
+  # Data Generators
+  data-generator:
+    build:
+      context: ./services/data-generator
+      dockerfile: Dockerfile
+    container_name: data-generator
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - MONGODB_URL=mongodb://admin:smartretail2024@mongodb:27017
+    networks:
+      - smartretail-network
+    depends_on:
+      - kafka
+      - mongodb
+    mem_limit: 256m
+
+  # Frontend Application
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    networks:
+      - smartretail-network
+    depends_on:
+      - api-service
+
+volumes:
+  hadoop_namenode:
+  hadoop_datanode:
+  zk_data:
+  zk_logs:
+  kafka_data:
+  hbase_data:
+  mongodb_data:
+  redis_data:
+
+networks:
+  smartretail-network:
+    driver: bridge
