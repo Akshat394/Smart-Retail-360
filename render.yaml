@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: smart-retail-backend
+    env: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false # Set this in the Render dashboard for security
+    autoDeploy: true
+    # If your backend is in a subdirectory, add rootDir: server
+
+  - type: static
+    name: smart-retail-frontend
+    buildCommand: npm run build
+    staticPublishPath: dist
+    rootDir: client
+    envVars:
+      - key: VITE_API_URL
+        value: https://smart-retail-backend.onrender.com/api # Update this after backend deploys
+    autoDeploy: true 
