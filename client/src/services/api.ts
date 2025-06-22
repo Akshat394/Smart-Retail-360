@@ -95,6 +95,22 @@ class ApiService {
     
     return { forecast };
   }
+
+  async getVehicleLocations() {
+    return this.request('/vehicles/locations');
+  }
+
+  async getTrafficAlerts() {
+    return this.request('/traffic-alerts');
+  }
+
+  async getOptimizedRoute(routeId: string) {
+    return this.request(`/routes/${routeId}/optimized`);
+  }
+
+  async getRouteAnalytics() {
+    return this.request('/route-analytics');
+  }
 }
 
 export const apiService = new ApiService();

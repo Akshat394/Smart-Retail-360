@@ -31,7 +31,7 @@ const DriverManagement: React.FC = () => {
   const loadDrivers = async () => {
     try {
       const data = await apiService.getDrivers();
-      setDrivers(data);
+      setDrivers(data as Driver[]);
     } catch (error) {
       console.error('Failed to load drivers:', error);
     } finally {

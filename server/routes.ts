@@ -6,6 +6,8 @@ import { pool } from "./db";
 import { startDemoDataGenerator } from "./demo-data";
 import { authenticate, authorize, ROLES, type AuthenticatedRequest } from "./auth";
 import { loginUserSchema, insertUserSchema, insertDriverSchema, insertRouteSchema } from "@shared/schema";
+import { dijkstraShortestPath } from './storage';
+import { INDIAN_CITY_GRAPH, INDIAN_CITIES } from './demo-data';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Public authentication routes
@@ -57,16 +59,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/system-health', authenticate, async (req, res) => {
     try {
       const metrics = await storage.getLatestMetrics();
-      res.json(metrics || {
-        forecastAccuracy: 87.4,
-        onTimeDelivery: 94.2,
-        carbonFootprint: 2.8,
-        inventoryTurnover: 12.3,
-        activeOrders: 1847,
-        routesOptimized: 342,
-        anomaliesDetected: 3,
-        costSavings: 284750
-      });
+      if (metrics) {
+        res.json(metrics);
+      } else {
+        res.json({
+          forecastAccuracy: 87.4,
+          onTimeDelivery: 94.2,
+          carbonFootprint: 2.8,
+          inventoryTurnover: 12.3,
+          activeOrders: 1847,
+          routesOptimized: 342,
+          anomaliesDetected: 3,
+          costSavings: 284750
+        });
+      }
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch system health' });
     }
@@ -102,7 +108,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!driver) {
         return res.status(404).json({ error: 'Driver not found' });
       }
-      
+      // Broadcast location update if location is present
+      if (updates.location) {
+        clients.forEach((client) => {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify({
+              type: 'vehicle_location_update',
+              data: {
+                id: driver.id,
+                name: driver.name,
+                email: driver.email,
+                vehicleId: driver.vehicleId,
+                location: driver.location,
+                status: driver.status
+              },
+              timestamp: new Date().toISOString()
+            }));
+          }
+        });
+      }
       res.json(driver);
     } catch (error) {
       res.status(400).json({ error: 'Failed to update driver' });
@@ -185,6 +209,165 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(metrics);
     } catch (error) {
       res.status(500).json({ error: 'Failed to insert metrics' });
+    }
+  });
+
+  // Vehicle location endpoint for real-time map
+  app.get('/api/vehicles/locations', authenticate, authorize([ROLES.ADMIN, ROLES.MANAGER, ROLES.OPERATIONS, ROLES.PLANNER]), async (req, res) => {
+    try {
+      const drivers = await storage.getAllDrivers();
+      // Only return id, name, email, vehicleId, and location
+      const vehicles = drivers.map(driver => ({
+        id: driver.id,
+        name: driver.name,
+        email: driver.email,
+        vehicleId: driver.vehicleId,
+        location: driver.location,
+        status: driver.status
+      }));
+      res.json(vehicles);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch vehicle locations' });
+    }
+  });
+
+  // Route optimization endpoint (mock/demo)
+  app.get('/api/routes/:id/optimized', authenticate, authorize([ROLES.ADMIN, ROLES.MANAGER, ROLES.OPERATIONS, ROLES.PLANNER]), async (req, res) => {
+    const { id } = req.params;
+    // Find the route by routeId
+    const allRoutes = await storage.getAllRoutes();
+    const route = allRoutes.find(r => r.routeId === id);
+    if (!route) {
+      return res.status(404).json({ error: 'Route not found' });
+    }
+    // Use Dijkstra to find the shortest path from New Delhi to destination
+    const start = 'New Delhi';
+    const end = route.destination;
+    const dijkstra = dijkstraShortestPath(INDIAN_CITY_GRAPH, start, end);
+    // Map city names to coordinates
+    const cityCoordMap = Object.fromEntries([
+      ...INDIAN_CITIES.map(c => [c.name, { lat: c.lat, lng: c.lng }]),
+      ['New Delhi', { lat: 28.6139, lng: 77.2090 }]
+    ]);
+    const polyline = dijkstra.path.map(city => cityCoordMap[city]);
+    // Carbon emission: 0.02 kg/km * distance (example factor)
+    const carbonEmission = +(dijkstra.distance * 0.02).toFixed(2);
+    // Get real traffic alerts
+    let affectedAlerts: string[] = [];
+    try {
+      const alertsRes = await storage.getAllDrivers ? await fetch('http://localhost:5000/api/traffic-alerts', { headers: { 'Authorization': req.headers['authorization'] as string } }) : null;
+      const alerts = alertsRes && alertsRes.ok ? await alertsRes.json() : [];
+      // Check if any alert location is close to any polyline point (within ~10km)
+      for (const alert of alerts) {
+        if (polyline.some(p => Math.abs(p.lat - alert.location.lat) < 0.1 && Math.abs(p.lng - alert.location.lng) < 0.1)) {
+          affectedAlerts.push(alert.id);
+        }
+      }
+    } catch (e) {
+      affectedAlerts = ['ALT-001', 'ALT-003']; // fallback demo
+    }
+    res.json({ routeId: id, polyline, affectedAlerts, shortestDistance: dijkstra.distance, carbonEmission });
+  });
+
+  // Route Analytics endpoint
+  app.get('/api/route-analytics', authenticate, async (req, res) => {
+    try {
+      // Get all routes completed today
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const allRoutes = await storage.getAllRoutes();
+      const completedRoutes = allRoutes.filter(r => r.status === 'completed' && r.updatedAt && new Date(r.updatedAt) >= today);
+      const totalRoutes = allRoutes.length;
+      const completedCount = completedRoutes.length;
+      // Average optimization (as %)
+      const avgOptimization = allRoutes.length > 0 ? (allRoutes.reduce((sum, r) => sum + (r.optimizationSavings || 0), 0) / allRoutes.length) * 100 : 0;
+      // Fuel saved (sum of optimizationSavings * fuelCost)
+      const fuelSaved = allRoutes.reduce((sum, r) => sum + ((r.fuelCost || 0) * (r.optimizationSavings || 0)), 0);
+      // CO2 reduced (sum of optimizationSavings * co2Emission)
+      const co2Reduced = allRoutes.reduce((sum, r) => sum + ((r.co2Emission || 0) * (r.optimizationSavings || 0)), 0);
+      // Time saved (sum of optimizationSavings * estimatedTime)
+      const timeSaved = allRoutes.reduce((sum, r) => sum + ((r.estimatedTime || 0) * (r.optimizationSavings || 0)), 0) / 60; // hours
+      res.json({
+        routesCompleted: `${completedCount}/${totalRoutes}`,
+        avgOptimization: `${avgOptimization.toFixed(2)}%`,
+        fuelSaved: `₹${fuelSaved.toFixed(2)}`,
+        co2Reduced: `${co2Reduced.toFixed(2)} kg`,
+        timeSaved: `${timeSaved.toFixed(2)} hours`
+      });
+    } catch (error) {
+      // Fallback demo values
+      res.json({
+        routesCompleted: '23/28',
+        avgOptimization: '22%',
+        fuelSaved: '₹184.50',
+        co2Reduced: '89.2 kg',
+        timeSaved: '4.2 hours'
+      });
+    }
+  });
+
+  // Traffic Alerts endpoint
+  app.get('/api/traffic-alerts', authenticate, authorize([ROLES.ADMIN, ROLES.MANAGER, ROLES.OPERATIONS, ROLES.PLANNER]), async (req, res) => {
+    try {
+      // Get all active routes and drivers
+      const allRoutes = await storage.getAllRoutes();
+      const allDrivers = await storage.getAllDrivers();
+      const alerts = [];
+      // Example: Delayed route alert
+      for (const route of allRoutes) {
+        if (route.status === 'active' && route.estimatedTime && route.updatedAt) {
+          const now = new Date();
+          const updated = new Date(route.updatedAt);
+          // If route has been active longer than estimated time, trigger delay alert
+          if ((now.getTime() - updated.getTime()) / 60000 > route.estimatedTime) {
+            alerts.push({
+              id: `delay-${route.routeId}`,
+              type: 'accident',
+              location: route.coordinates,
+              impact: 'Delay',
+              delay: `${((now.getTime() - updated.getTime()) / 60000 - route.estimatedTime).toFixed(1)} min`,
+              affectedRoutes: [route.routeId]
+            });
+          }
+        }
+      }
+      // Example: Anomaly alert for drivers with status not 'available' or 'assigned'
+      for (const driver of allDrivers) {
+        if (driver.status !== 'available' && driver.status !== 'assigned' && driver.location) {
+          alerts.push({
+            id: `anomaly-${driver.id}`,
+            type: 'construction',
+            location: driver.location,
+            impact: 'Driver anomaly',
+            delay: 'N/A',
+            affectedRoutes: allRoutes.filter(r => r.driverId === driver.id).map(r => r.routeId)
+          });
+        }
+      }
+      // Fallback: If no real alerts, return a demo alert
+      if (alerts.length === 0) {
+        alerts.push({
+          id: 'demo-traffic-1',
+          type: 'construction',
+          location: { lat: 28.6304, lng: 77.2177 },
+          impact: 'Roadwork',
+          delay: '15 min',
+          affectedRoutes: allRoutes.length > 0 ? [allRoutes[0].routeId] : []
+        });
+      }
+      res.json(alerts);
+    } catch (error) {
+      // Fallback demo alert
+      res.json([
+        {
+          id: 'demo-traffic-1',
+          type: 'construction',
+          location: { lat: 28.6304, lng: 77.2177 },
+          impact: 'Roadwork',
+          delay: '15 min',
+          affectedRoutes: []
+        }
+      ]);
     }
   });
 

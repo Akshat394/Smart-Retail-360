@@ -356,31 +356,37 @@ const Dashboard: React.FC = () => {
         >
           <h3 className="text-xl font-semibold text-white mb-6">System Performance</h3>
           <div className="space-y-4">
-            {systemHealth?.services?.slice(0, 4).map((service: any, index: number) => (
-              <div key={service.name} className="flex items-center justify-between">
-                <span className="text-sm text-gray-400">{service.name}</span>
-                <div className="flex items-center space-x-2">
-                  <div className="w-24 h-2 bg-gray-700 rounded-full overflow-hidden">
-                    <motion.div 
-                      className={`h-full ${
-                        service.status === 'healthy' ? 'bg-green-500' : 
-                        service.status === 'warning' ? 'bg-yellow-500' : 'bg-red-500'
-                      }`}
-                      initial={{ width: 0 }}
-                      animate={{ width: service.status === 'healthy' ? '95%' : '75%' }}
-                      transition={{ duration: 1, delay: 0.8 + index * 0.1 }}
-                    />
-                  </div>
-                  <span className="text-sm text-white">{service.uptime}</span>
-                </div>
-              </div>
-            ))}
-            <div className="flex items-center justify-between pt-2 border-t border-gray-700">
-              <span className="text-sm text-gray-400">API Response Time</span>
-              <div className="flex items-center space-x-2">
-                <Zap className="w-4 h-4 text-green-400" />
-                <span className="text-sm text-white">24ms avg</span>
-              </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-400">Forecast Accuracy</span>
+              <span className="text-white font-semibold">{systemHealth?.forecastAccuracy ?? '...'}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-400">On-Time Delivery</span>
+              <span className="text-white font-semibold">{systemHealth?.onTimeDelivery ?? '...'}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-400">Carbon Footprint</span>
+              <span className="text-white font-semibold">{systemHealth?.carbonFootprint ?? '...'}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-400">Inventory Turnover</span>
+              <span className="text-white font-semibold">{systemHealth?.inventoryTurnover ?? '...'}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-400">Active Orders</span>
+              <span className="text-white font-semibold">{systemHealth?.activeOrders ?? '...'}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-400">Routes Optimized</span>
+              <span className="text-white font-semibold">{systemHealth?.routesOptimized ?? '...'}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-400">Anomalies Detected</span>
+              <span className="text-white font-semibold">{systemHealth?.anomaliesDetected ?? '...'}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-400">Cost Savings</span>
+              <span className="text-white font-semibold">{systemHealth?.costSavings ?? '...'}</span>
             </div>
           </div>
         </motion.div>

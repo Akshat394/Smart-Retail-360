@@ -33,6 +33,7 @@ export const routes = pgTable("routes", {
   id: serial("id").primaryKey(),
   routeId: text("route_id").notNull().unique(),
   driverId: integer("driver_id").references(() => drivers.id),
+  vehicleId: text("vehicle_id"),
   destination: text("destination").notNull(),
   status: text("status").notNull().default("planned"), // planned, active, completed, cancelled
   optimizationMode: text("optimization_mode").notNull().default("balanced"), // fastest, eco, balanced

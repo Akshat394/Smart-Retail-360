@@ -27,5 +27,37 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('react') || id.includes('react-dom')) {
+              return 'react-vendor';
+            }
+            if (id.includes('framer-motion')) {
+              return 'framer-motion';
+            }
+            if (id.includes('recharts')) {
+              return 'recharts';
+            }
+            if (id.includes('leaflet') || id.includes('react-leaflet')) {
+              return 'leaflet';
+            }
+            if (id.includes('lucide-react')) {
+              return 'lucide';
+            }
+            if (id.includes('mapbox-gl')) {
+              return 'mapbox';
+            }
+            if (id.includes('@vis.gl')) {
+              return 'google-maps';
+            }
+            return 'vendor';
+          }
+        },
+        chunkFileNames: 'chunks/[name]-[hash].js',
+      },
+    },
+    chunkSizeWarningLimit: 1000,
   },
 });
