@@ -1,175 +1,153 @@
-# SmartRetail360 - Supply Chain AI Platform
+# 🚀 SmartRetail360 – AI-Powered Supply Chain Platform
 
-A comprehensive supply chain orchestration platform that combines real-time analytics, demand forecasting, route optimization, and digital twin simulation capabilities.
+![TypeScript](https://img.shields.io/badge/TypeScript-4.9%2B-blue?logo=typescript)
+![React](https://img.shields.io/badge/React-18-blue?logo=react)
+![Node.js](https://img.shields.io/badge/Node.js-20-green?logo=node.js)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Neon-blue?logo=postgresql)
+![Vite](https://img.shields.io/badge/Vite-5.4-purple?logo=vite)
 
-## Features
+> **SmartRetail360** is a next-generation supply chain orchestration platform, blending real-time analytics, AI-powered demand forecasting, route optimization, and digital twin simulation into a single, beautiful dashboard.
 
-- **Real-time Dashboard**: Live KPI monitoring with WebSocket updates
-- **Route Optimization**: AI-powered logistics with multiple optimization modes
-- **Analytics & Forecasting**: ML-powered demand prediction with ARIMA, LSTM, and ensemble models
-- **Digital Twin**: Scenario simulation for supply chain testing
-- **Driver Management**: Complete CRUD operations for delivery team management
-- **Role-based Access Control**: Multi-user system with granular permissions
+---
 
-## User Roles
+## ✨ Key Features
 
-- **Admin**: Full system access and user management
-- **Manager**: Management features and analytics access
-- **Operations**: Driver and route management capabilities
-- **Analyst**: Analytics and forecasting tools
-- **Planner**: Supply chain planning and analytics
-- **Viewer**: Dashboard view only
+- **📊 Real-time Dashboard:** Live KPI monitoring with instant WebSocket updates
+- **🗺️ Route Optimization:** AI-powered, eco-friendly, and fastest route planning with Dijkstra's algorithm and real Indian city data
+- **📈 Analytics & Forecasting:** ML-powered demand prediction (ARIMA, LSTM, Ensemble)
+- **🧑‍💼 Driver Management:** Full CRUD for delivery teams, live status, and assignment
+- **🛣️ Vehicle Tracking:** Interactive Google Maps with live vehicle locations, traffic alerts, and route polylines
+- **🧠 Digital Twin:** Scenario simulation for supply chain stress-testing
+- **🔒 Role-based Access Control:** Multi-user system with granular permissions (Admin, Manager, Operations, Analyst, Planner, Viewer)
+- **⚡ Real-time Alerts:** Traffic, route, and system health alerts with actionable insights
+- **🌱 Carbon Optimization:** Minimize emissions with eco-routing and analytics
 
-## Technology Stack
+---
 
-### Frontend
-- React 18 with TypeScript
-- Vite for fast development
-- Tailwind CSS + Radix UI components
-- Framer Motion for animations
-- TanStack React Query for state management
+## 🖥️ Tech Stack
 
-### Backend
-- Node.js 20 with Express.js
-- TypeScript with ES modules
-- PostgreSQL with Drizzle ORM
-- WebSocket for real-time updates
-- Session-based authentication with bcrypt
+**Frontend:**
+- React 18 + TypeScript
+- Vite ⚡
+- Tailwind CSS + Radix UI
+- Framer Motion (animations)
+- Google Maps (via @vis.gl/react-google-maps)
 
-### Database
+**Backend:**
+- Node.js 20 + Express.js
+- TypeScript (ESM)
 - PostgreSQL (Neon serverless)
-- Drizzle ORM for type-safe queries
-- Real-time notifications via LISTEN/NOTIFY
+- Drizzle ORM (type-safe SQL)
+- WebSocket (real-time updates)
+- Session Auth (bcrypt)
 
-## Getting Started
+**DevOps:**
+- Modern monorepo structure
+- Hot reload for dev, optimized chunked builds for prod
 
-### Prerequisites
+---
+
+## 🚦 Live Demo Features
+
+- **Live KPI Dashboard:** Forecast accuracy, on-time delivery, carbon footprint, inventory turnover, and more
+- **Route Optimization:** Select any Indian city, see optimized route from New Delhi HQ, live traffic alerts, and carbon savings
+- **Vehicle Map:** Real-time vehicle locations, traffic alerts, and route overlays on Google Maps
+- **Driver Management:** Add, edit, assign, and monitor drivers
+- **Analytics:** Demand forecasting, anomaly detection, and model performance comparison
+- **Digital Twin:** Simulate supply chain scenarios and see instant impact
+
+---
+
+## 🏁 Quickstart
+
+### 1. Prerequisites
 - Node.js 20+
-- PostgreSQL database
+- PostgreSQL (Neon or local)
 - npm or yarn
 
-### Installation
-
-1. Clone the repository:
+### 2. Installation
 ```bash
-git clone <repository-url>
-cd smartretail360
-```
-
-2. Install dependencies:
-```bash
+git clone https://github.com/Akshat394/Smart-Retail-360.git
+cd Smart-Retail-360
 npm install
 ```
 
-3. Set up environment variables:
-```bash
-# Copy and configure your database URL
+### 3. Environment Setup
+Create a `.env` file in the root:
+```env
 DATABASE_URL=your_postgresql_connection_string
 ```
 
-4. Run database migrations:
+### 4. Database Migration
 ```bash
 npm run db:push
 ```
 
-5. Start the development server:
+### 5. Start Development
 ```bash
 npm run dev
 ```
+App runs at: [http://localhost:5000](http://localhost:5000)
 
-The application will be available at `http://localhost:5000`
-
-## Production User Accounts
-
-The following team members have access to the system:
-
-- **Akshat Trivedi** - System Administrator
-- **Arushi Gupta** - Executive/Manager  
-- **Abhishek Srivastava** - Operations Manager
-- **Tanveer Hussain Khan** - Data Analyst/Forecasting Specialist
-- **Arushi Gupta** - Supply Chain Planner
-
-## Project Structure
-
-```
-├── client/                 # React frontend
-│   ├── src/
-│   │   ├── components/     # Reusable UI components
-│   │   ├── hooks/          # Custom React hooks
-│   │   └── services/       # API service layer
-├── server/                 # Express backend
-│   ├── auth.ts            # Authentication middleware
-│   ├── routes.ts          # API route definitions
-│   ├── storage.ts         # Database operations
-│   └── db.ts              # Database connection
-├── shared/                 # Shared types and schemas
-│   └── schema.ts          # Database schema definitions
-└── package.json
-```
-
-## API Endpoints
-
-### Authentication
-- `POST /api/auth/login` - User login
-- `GET /api/auth/me` - Get current user
-- `POST /api/auth/register` - Admin-only user creation
-
-### Drivers
-- `GET /api/drivers` - List all drivers
-- `POST /api/drivers` - Create new driver
-- `PUT /api/drivers/:id` - Update driver
-- `DELETE /api/drivers/:id` - Delete driver
-
-### Routes
-- `GET /api/routes` - List all routes
-- `POST /api/routes` - Create new route
-- `PUT /api/routes/:id` - Update route
-
-### System
-- `GET /api/system-health` - Real-time metrics
-- `GET /api/inventory` - Inventory status
-- `GET /api/events` - Recent system events
-
-## Real-time Features
-
-The application uses WebSocket connections for:
-- Live dashboard metrics updates
-- Real-time driver status changes
-- Route optimization notifications
-- System health monitoring
-
-## Security
-
-- Session-based authentication with secure tokens
-- Role-based access control (RBAC)
-- Password hashing with bcrypt
-- SQL injection protection via Drizzle ORM
-- Input validation with Zod schemas
-
-## Development
-
-### Database Management
+### 6. Production Build
 ```bash
-# Push schema changes
-npm run db:push
-
-# Generate migrations (if needed)
-npm run db:generate
-```
-
-### Building for Production
-```bash
-# Build frontend and backend
 npm run build
-
-# Start production server
 npm start
 ```
 
-## License
+---
 
-Private project - All rights reserved
+## 🗂️ Project Structure
+```
+├── client/                 # React frontend
+│   ├── src/
+│   │   ├── components/     # UI components
+│   │   ├── hooks/          # Custom React hooks
+│   │   └── services/       # API service layer
+├── server/                 # Express backend
+│   ├── auth.ts             # Auth middleware
+│   ├── routes.ts           # API routes
+│   ├── storage.ts          # DB operations
+│   └── db.ts               # DB connection
+├── shared/                 # Shared types & schemas
+│   └── schema.ts           # DB schema
+└── package.json
+```
 
-## Support
+---
 
-For technical support or questions about the platform, contact the development team.
+## 🔗 API Endpoints (Highlights)
+- `POST /api/auth/login` – User login
+- `GET /api/drivers` – List drivers
+- `POST /api/drivers` – Create driver
+- `GET /api/routes` – List routes
+- `GET /api/system-health` – Real-time metrics
+- `GET /api/traffic-alerts` – Live traffic alerts
+- `GET /api/route-analytics` – Route analytics
+
+---
+
+## 🔒 Security & Best Practices
+- Session-based authentication with secure tokens
+- Role-based access control (RBAC)
+- Password hashing (bcrypt)
+- SQL injection protection (Drizzle ORM)
+- Input validation (Zod)
+
+---
+
+## 👥 Team & Roles
+- **Akshat Trivedi** – System Administrator
+- **Arushi Gupta** – Executive/Manager, Supply Chain Planner
+- **Abhishek Srivastava** – Operations Manager
+- **Tanveer Hussain Khan** – Data Analyst/Forecasting Specialist
+
+---
+
+## 📣 Support
+For technical support or questions, contact the development team or open an issue on [GitHub](https://github.com/Akshat394/Smart-Retail-360).
+
+---
+
+## 📝 License
+Private project – All rights reserved
