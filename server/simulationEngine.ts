@@ -76,8 +76,10 @@ function calculateRouteMetrics(distance: number) {
 // --- Scenario Implementations ---
 
 async function runWeatherEvent(params: any): Promise<SimulationReport> {
+  console.log('[SIM DEBUG] WeatherEvent params:', params);
   const { city, severity } = params;
   const activeRoutes = await storage.getAllRoutes();
+  console.log('[SIM DEBUG] Active Routes:', activeRoutes);
   const affectedRoutes = activeRoutes.filter(r => {
     if (r.destination && r.destination.includes(city)) return true;
     const stops = Array.isArray(r.stops) ? r.stops : (Array.isArray((r.stops as any)?.toArray) ? (r.stops as any).toArray() : []);
@@ -179,9 +181,11 @@ async function getSuppliersOrMock() {
 
 async function runDemandSpike(params: any): Promise<SimulationReport> {
   const { increasePercentage, duration, productCategory } = params;
-
+  console.log('[SIM DEBUG] DemandSpike params:', params);
   const inventory = await getInventoryOrMock();
+  console.log('[SIM DEBUG] Inventory:', inventory);
   const affectedProducts = inventory.filter(p => p.category === productCategory);
+  console.log('[SIM DEBUG] Affected Products:', affectedProducts);
   let totalExtraDemand = 0;
   let stockoutRisk = 0;
   let productsAtRisk: number[] = [];
@@ -223,16 +227,18 @@ async function runDemandSpike(params: any): Promise<SimulationReport> {
 
 async function runSupplierOutage(params: any): Promise<SimulationReport> {
     const { supplierId, impactPercentage, duration } = params;
+    console.log('[SIM DEBUG] SupplierOutage params:', params);
     const suppliers = await getSuppliersOrMock();
+    console.log('[SIM DEBUG] Suppliers:', suppliers);
     const mainSupplier = suppliers.find((s: any) => s.id === supplierId);
+    console.log('[SIM DEBUG] Main Supplier:', mainSupplier);
     if (!mainSupplier) throw new Error("Supplier not found");
-
     const backupSupplier = suppliers.find((s: any) => s.id !== supplierId && s.productIds.some((pid: number) => mainSupplier.productIds.includes(pid)));
-
     const inventory = await getInventoryOrMock();
+    console.log('[SIM DEBUG] Inventory:', inventory);
     const affectedProducts = inventory.filter(p => mainSupplier.productIds.includes(p.id));
+    console.log('[SIM DEBUG] Affected Products:', affectedProducts);
     let totalStockoutDays = 0;
-    let productsAtRisk: number[] = [];
     let extraCost = 0;
 
     for (const product of affectedProducts) {
@@ -243,7 +249,6 @@ async function runSupplierOutage(params: any): Promise<SimulationReport> {
         
         if (daysUntilStockout < duration) {
             totalStockoutDays += (duration - daysUntilStockout);
-            productsAtRisk.push(product.id);
 
             // Calculate cost of using backup supplier
             if (backupSupplier) {
@@ -256,7 +261,7 @@ async function runSupplierOutage(params: any): Promise<SimulationReport> {
         }
     }
 
-    const avgStockoutRisk = productsAtRisk.length > 0 ? (totalStockoutDays / (productsAtRisk.length * duration)) * 100 : 0;
+    const avgStockoutRisk = totalStockoutDays > 0 ? (totalStockoutDays / (affectedProducts.length * duration)) * 100 : 0;
 
     return {
         summary: {
@@ -267,7 +272,7 @@ async function runSupplierOutage(params: any): Promise<SimulationReport> {
             cost: { change: extraCost, percentage: "~15-30%" },
             sla: { total_delay_minutes: 0, affected_routes: 0 },
             carbon: { change_kg: extraCost * 0.03, percentage: "~1-2%" },
-            inventory: { stockout_risk_percentage: avgStockoutRisk, affected_products: productsAtRisk }
+            inventory: { stockout_risk_percentage: avgStockoutRisk, affected_products: affectedProducts.map(p => p.id) }
         },
         recommendations: [{
             priority: 'High',
@@ -278,9 +283,10 @@ async function runSupplierOutage(params: any): Promise<SimulationReport> {
 }
 
 async function runPeakSeason(params: any): Promise<SimulationReport> {
+    console.log('[SIM DEBUG] PeakSeason params:', params);
     const { increasePercentage, duration, preparationTime } = params;
-
     const inventory = await getInventoryOrMock();
+    console.log('[SIM DEBUG] Inventory:', inventory);
     let totalProjectedDemand = 0;
     let totalSupplyFromBuildup = 0;
     let productsAtRisk: number[] = [];
