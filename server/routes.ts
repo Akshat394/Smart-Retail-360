@@ -11,6 +11,7 @@ import { INDIAN_CITY_GRAPH, INDIAN_CITIES } from './demo-data';
 import { runSimulation } from './simulationEngine';
 import { detectMetricAnomalies } from './anomalyDetection';
 import { getMLPrediction, getMLExplanation } from './mlService';
+import { optimizeRoute } from './services/routeOptimizer';
 
 // Helper: city-based alert type inference
 function inferCityAlertType(city: string | undefined) {
@@ -539,6 +540,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(result);
     } catch (e) {
       res.status(500).json({ error: 'ML explanation service error' });
+    }
+  });
+
+  app.post('/api/route-optimize', authenticate, authorize([ROLES.ADMIN, ROLES.MANAGER, ROLES.OPERATIONS]), async (req, res) => {
+    try {
+      const { stops } = req.body; // Array of addresses or lat/lng
+      const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+      if (!apiKey) return res.status(500).json({ error: "Google Maps API key not set" });
+      const result = await optimizeRoute(stops, apiKey);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Route optimization failed", details: (error as Error).message });
     }
   });
 

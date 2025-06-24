@@ -140,6 +140,13 @@ class ApiService {
       body: JSON.stringify({ data, params }),
     });
   }
+
+  async optimizeRoute(stops: string[]) {
+    return this.request('/route-optimize', {
+      method: 'POST',
+      body: JSON.stringify({ stops }),
+    });
+  }
 }
 
 export const apiService = new ApiService();

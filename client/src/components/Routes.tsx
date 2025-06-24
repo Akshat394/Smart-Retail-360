@@ -6,6 +6,7 @@ import { useAuth } from '../hooks/useAuth';
 import DriverManagement from './DriverManagement';
 import VehicleMap from './VehicleMap';
 import type { Route } from '@shared/schema';
+import RouteOptimizer from './RouteOptimizer';
 
 type RouteWithDriver = Route & { driverName: string | null };
 
