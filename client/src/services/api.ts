@@ -111,6 +111,13 @@ class ApiService {
   async getRouteAnalytics() {
     return this.request('/route-analytics');
   }
+
+  async runSimulation(scenario: string, parameters: any) {
+    return this.request('/simulation/run', {
+      method: 'POST',
+      body: JSON.stringify({ scenario, parameters }),
+    });
+  }
 }
 
 export const apiService = new ApiService();

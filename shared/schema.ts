@@ -152,3 +152,51 @@ export type Event = typeof events.$inferSelect;
 export type UserSession = typeof userSessions.$inferSelect;
 
 export type IndianCity = { name: string; lat: number; lng: number };
+
+// Types for Digital Twin Simulation
+export type SimulationParams = {
+  scenario: 'weather_event' | 'demand_spike' | 'supplier_outage';
+  parameters: {
+    // Common parameters
+    severity: 'low' | 'medium' | 'high';
+    // Scenario-specific parameters
+    city?: string;
+    eventType?: 'flood' | 'storm' | 'fog';
+    productId?: number;
+    increasePercentage?: number;
+    supplierId?: number;
+  };
+};
+
+export type SimulationReport = {
+  summary: {
+    scenario: string;
+    description: string;
+  };
+  impact: {
+    cost: {
+      change: number;
+      percentage: string;
+    };
+    sla: {
+      total_delay_minutes: number;
+      affected_routes: number;
+    };
+    carbon: {
+      change_kg: number;
+      percentage: string;
+    };
+    inventory: {
+      stockout_risk_percentage: number;
+      affected_products: number[];
+    };
+  };
+  recommendations: {
+    priority: 'High' | 'Medium' | 'Low';
+    message: string;
+  }[];
+  details: {
+    affectedRoutes: Partial<Route>[];
+    reroutedPaths: any[]; // Define a more specific type for this
+  };
+};

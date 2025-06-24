@@ -8,6 +8,7 @@ import { authenticate, authorize, ROLES, type AuthenticatedRequest } from "./aut
 import { loginUserSchema, insertUserSchema, insertDriverSchema, insertRouteSchema, type IndianCity } from "@shared/schema";
 import { dijkstraShortestPath } from './storage';
 import { INDIAN_CITY_GRAPH, INDIAN_CITIES } from './demo-data';
+import { SimulationEngine, type SimulationParams } from './simulationEngine';
 
 // Helper: city-based alert type inference
 function inferCityAlertType(city: string | undefined) {
@@ -425,6 +426,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
           affectedRoutes: []
         }
       ]);
+    }
+  });
+
+  // Digital Twin Simulation Endpoint
+  app.post('/api/simulation/run', authenticate, authorize([ROLES.ADMIN, ROLES.MANAGER, ROLES.PLANNER]), async (req, res) => {
+    try {
+      const simulationParams = req.body as SimulationParams;
+      
+      // Basic validation
+      if (!simulationParams.scenario || !simulationParams.parameters) {
+        return res.status(400).json({ error: 'Missing simulation scenario or parameters' });
+      }
+
+      const engine = new SimulationEngine();
+      const report = await engine.run(simulationParams);
+      
+      res.json(report);
+    } catch (error) {
+      console.error('Simulation run error:', error);
+      // Check if the error is an instance of Error to safely access the message property
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred during simulation.';
+      res.status(500).json({ error: 'Failed to run simulation', details: errorMessage });
     }
   });
 

@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Play, Pause, RotateCcw, Zap, Cloud, Package, TrendingUp, AlertTriangle } from 'lucide-react';
+import { apiService } from '../services/api';
+import type { SimulationReport } from '@shared/schema';
 
 const DigitalTwin: React.FC = () => {
   const [isSimulating, setIsSimulating] = useState(false);
-  const [selectedScenario, setSelectedScenario] = useState<'demand_spike' | 'weather' | 'supplier' | 'peak_season'>('demand_spike');
+  const [selectedScenario, setSelectedScenario] = useState<'demand_spike' | 'weather_event' | 'supplier_outage' | 'peak_season'>('demand_spike');
+  const [simulationResult, setSimulationResult] = useState<SimulationReport | null>(null);
+  const [simulationError, setSimulationError] = useState<string | null>(null);
 
   const scenarios = [
     {
@@ -21,7 +25,7 @@ const DigitalTwin: React.FC = () => {
       }
     },
     {
-      id: 'weather',
+      id: 'weather_event',
       name: 'Weather Event',
       description: 'Model severe weather disruption',
       icon: Cloud,
@@ -34,7 +38,7 @@ const DigitalTwin: React.FC = () => {
       }
     },
     {
-      id: 'supplier',
+      id: 'supplier_outage',
       name: 'Supplier Outage',
       description: 'Test alternative sourcing strategies',
       icon: Package,
@@ -72,7 +76,7 @@ const DigitalTwin: React.FC = () => {
         'Increase staffing at fulfillment centers by 15%'
       ]
     },
-    weather: {
+    weather_event: {
       inventory_impact: '+15% delay in replenishment',
       cost_impact: '+$12,000 alternative routing',
       sla_impact: '-12% on-time delivery',
@@ -82,7 +86,7 @@ const DigitalTwin: React.FC = () => {
         'Activate emergency supplier contracts'
       ]
     },
-    supplier: {
+    supplier_outage: {
       inventory_impact: '+40% shortage in Category-B',
       cost_impact: '+$78,000 premium sourcing',
       sla_impact: '-25% availability',
@@ -105,17 +109,38 @@ const DigitalTwin: React.FC = () => {
   };
 
   const currentScenario = scenarios.find(s => s.id === selectedScenario)!;
-  const currentResults = simulationResults[selectedScenario];
+  const currentResults = simulationResult ? null : simulationResults[selectedScenario];
 
-  const handleSimulation = () => {
-    setIsSimulating(!isSimulating);
-    if (!isSimulating) {
-      // Simulate for 5 seconds
-      setTimeout(() => {
-        setIsSimulating(false);
-      }, 5000);
+  const handleSimulation = async () => {
+    setIsSimulating(true);
+    setSimulationError(null);
+    setSimulationResult(null);
+
+    try {
+      const scenarioMap = {
+        demand_spike: { scenario: 'demand_spike', parameters: { severity: 'medium', increasePercentage: 50, productId: 101 } },
+        weather_event: { scenario: 'weather_event', parameters: { severity: 'high', city: 'Mumbai', eventType: 'flood' } },
+        supplier_outage: { scenario: 'supplier_outage', parameters: { severity: 'high', supplierId: 1 } },
+        peak_season: { scenario: 'demand_spike', parameters: { severity: 'high', increasePercentage: 120 } }
+      };
+
+      const { scenario, parameters } = scenarioMap[selectedScenario];
+      const result = await apiService.runSimulation(scenario, parameters) as SimulationReport;
+      setSimulationResult(result);
+
+    } catch (error) {
+      console.error("Simulation failed:", error);
+      setSimulationError(error instanceof Error ? error.message : "An unknown error occurred.");
+    } finally {
+      setIsSimulating(false);
     }
   };
+
+  const handleReset = () => {
+    setIsSimulating(false);
+    setSimulationResult(null);
+    setSimulationError(null);
+  }
 
   return (
     <div className="p-6 space-y-6 bg-gray-900 min-h-screen">
@@ -140,9 +165,12 @@ const DigitalTwin: React.FC = () => {
             }`}
           >
             {isSimulating ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
-            <span>{isSimulating ? 'Stop Simulation' : 'Run Simulation'}</span>
+            <span>{isSimulating ? 'Running Simulation...' : 'Run Simulation'}</span>
           </button>
-          <button className="px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg flex items-center space-x-2 transition-colors">
+          <button 
+            onClick={handleReset}
+            className="px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg flex items-center space-x-2 transition-colors"
+          >
             <RotateCcw className="w-5 h-5" />
             <span>Reset</span>
           </button>
@@ -256,21 +284,21 @@ const DigitalTwin: React.FC = () => {
                   <Package className="w-8 h-8 text-white" />
                 </div>
                 <h4 className="text-sm text-gray-400 mb-1">Inventory Impact</h4>
-                <p className="text-lg font-semibold text-white">{currentResults.inventory_impact}</p>
+                <p className="text-lg font-semibold text-white">{simulationResult ? `${simulationResult.impact.inventory.stockout_risk_percentage.toFixed(1)}% risk` : currentResults?.inventory_impact}</p>
               </div>
               <div className="text-center">
                 <div className="w-16 h-16 bg-gradient-to-r from-yellow-500 to-yellow-600 rounded-full flex items-center justify-center mx-auto mb-3">
                   <TrendingUp className="w-8 h-8 text-white" />
                 </div>
                 <h4 className="text-sm text-gray-400 mb-1">Cost Impact</h4>
-                <p className="text-lg font-semibold text-white">{currentResults.cost_impact}</p>
+                <p className="text-lg font-semibold text-white">{simulationResult ? `~$${simulationResult.impact.cost.change.toFixed(0)}` : currentResults?.cost_impact}</p>
               </div>
               <div className="text-center">
                 <div className="w-16 h-16 bg-gradient-to-r from-purple-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-3">
                   <AlertTriangle className="w-8 h-8 text-white" />
                 </div>
                 <h4 className="text-sm text-gray-400 mb-1">SLA Impact</h4>
-                <p className="text-lg font-semibold text-white">{currentResults.sla_impact}</p>
+                <p className="text-lg font-semibold text-white">{simulationResult ? `${simulationResult.impact.sla.affected_routes} routes affected` : currentResults?.sla_impact}</p>
               </div>
             </div>
           </motion.div>
@@ -284,7 +312,7 @@ const DigitalTwin: React.FC = () => {
           >
             <h3 className="text-xl font-semibold text-white mb-6">AI Recommendations</h3>
             <div className="space-y-4">
-              {currentResults.recommendations.map((recommendation, index) => (
+              {(simulationResult ? simulationResult.recommendations : currentResults?.recommendations.map(r => ({ message: r, priority: 'High' })) || []).map((recommendation, index) => (
                 <motion.div
                   key={index}
                   className="flex items-start space-x-4 p-4 bg-green-500/10 border border-green-500/20 rounded-lg"
@@ -296,9 +324,9 @@ const DigitalTwin: React.FC = () => {
                     <span className="text-white text-sm font-bold">{index + 1}</span>
                   </div>
                   <div>
-                    <p className="text-white font-medium">{recommendation}</p>
+                    <p className="text-white font-medium">{recommendation.message}</p>
                     <div className="flex items-center space-x-4 mt-2 text-sm">
-                      <span className="text-green-400">Priority: High</span>
+                      <span className="text-green-400">Priority: {recommendation.priority}</span>
                       <span className="text-gray-400">Impact: {Math.floor(Math.random() * 30 + 70)}%</span>
                       <span className="text-gray-400">Effort: {['Low', 'Medium', 'High'][index % 3]}</span>
                     </div>
