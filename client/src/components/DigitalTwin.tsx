@@ -60,7 +60,7 @@ const DigitalTwin: React.FC = () => {
       description: 'Optimize for holiday demand',
       icon: Zap,
       color: 'from-green-500 to-green-600',
-       parameters: {
+      parameters: {
         increasePercentage: { min: 50, max: 300, default: 120, unit: '%' },
         duration: { min: 15, max: 90, default: 45, unit: ' days' },
         preparationTime: { min: 15, max: 120, default: 60, unit: ' days' }
@@ -186,7 +186,7 @@ const DigitalTwin: React.FC = () => {
       console.error("Simulation failed:", error);
       setSimulationError(error instanceof Error ? error.message : "An unknown error occurred.");
     } finally {
-      setIsSimulating(false);
+        setIsSimulating(false);
     }
   };
 
@@ -375,12 +375,12 @@ const DigitalTwin: React.FC = () => {
         </motion.div>
 
         {/* Simulation Results + Charts */}
-        <motion.div
+          <motion.div
           className="lg:col-span-2 bg-gray-800 rounded-xl p-8 border border-gray-700"
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.5, delay: 0.5 }}
-        >
+            transition={{ duration: 0.5, delay: 0.5 }}
+          >
           <div className="flex justify-between items-center mb-6">
             <h3 className="text-xl font-semibold text-white">Simulation Impact Analysis</h3>
             <span className={`text-sm font-medium px-3 py-1 rounded-full ${
@@ -388,7 +388,7 @@ const DigitalTwin: React.FC = () => {
             }`}>
               {simulationResult ? 'Completed' : 'Ready to Run'}
             </span>
-          </div>
+                </div>
 
           {isSimulating && (
             <div className="flex items-center justify-center h-full">
@@ -396,7 +396,7 @@ const DigitalTwin: React.FC = () => {
                 <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
                 <p>Running complex multi-factor analysis...</p>
               </div>
-            </div>
+                </div>
           )}
 
           {simulationError && (
@@ -414,7 +414,7 @@ const DigitalTwin: React.FC = () => {
               {/* Key Metrics */}
               <div>
                 <h4 className="text-lg font-semibold text-white mb-4">Key Metrics Impact</h4>
-                <div className="space-y-4">
+            <div className="space-y-4">
                   <div className="flex items-center justify-between p-4 bg-gray-700/50 rounded-lg">
                     <span className="text-gray-400">Cost Impact</span>
                     <span className={`font-bold ${(simulationResult.impact.cost?.change ?? 0) > 0 ? 'text-red-400' : 'text-green-400'}`}>
@@ -432,14 +432,14 @@ const DigitalTwin: React.FC = () => {
                     <span className={`font-bold ${(simulationResult.impact.carbon?.change_kg ?? 0) > 0 ? 'text-red-400' : 'text-green-400'}`}>
                        {(simulationResult.impact.carbon?.change_kg ?? 0) > 0 ? '+' : ''}{(simulationResult.impact.carbon?.change_kg ?? 0).toFixed(2)} kg ({simulationResult.impact.carbon?.percentage ?? '0%'})
                     </span>
-                  </div>
+                    </div>
                    <div className="flex items-center justify-between p-4 bg-gray-700/50 rounded-lg">
                     <span className="text-gray-400">Stockout Risk</span>
                     <span className="font-bold text-red-400">
                       {(simulationResult.impact.inventory?.stockout_risk_percentage ?? 0).toFixed(2)}%
                     </span>
                   </div>
-                </div>
+            </div>
                 {/* Charts for metrics */}
                 <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="bg-gray-700/50 rounded-lg p-4">
@@ -531,7 +531,7 @@ const DigitalTwin: React.FC = () => {
               </div>
             </div>
           )}
-        </motion.div>
+          </motion.div>
       </div>
     </div>
   );
