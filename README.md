@@ -151,3 +151,25 @@ For technical support or questions, contact the development team or open an issu
 
 ## 📝 License
 Private project – All rights reserved
+
+## ML Microservice Integration
+
+A Python FastAPI microservice can be used to provide real ML predictions, anomaly detection, and explanations for the Smart Retail 360 platform.
+
+### Endpoints
+- `/predict`: Returns predictions for input data.
+- `/detect-anomalies`: Returns detected anomalies for input data.
+
+### How to Run
+1. Go to the `ml_service/` directory (create it if it doesn't exist).
+2. Install dependencies:
+   ```bash
+   pip install fastapi uvicorn scikit-learn joblib
+   ```
+3. Start the service:
+   ```bash
+   uvicorn main:app --reload --port 8000
+   ```
+4. The Node.js backend will call this service for ML tasks.
+
+See `ml_service/main.py` for example code.

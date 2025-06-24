@@ -118,6 +118,14 @@ class ApiService {
       body: JSON.stringify({ scenario, parameters }),
     });
   }
+
+  async getSuppliers() {
+    return this.request('/suppliers');
+  }
+
+  async getAnomalies() {
+    return this.request('/anomalies');
+  }
 }
 
 export const apiService = new ApiService();

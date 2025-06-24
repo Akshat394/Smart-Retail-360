@@ -5,10 +5,12 @@ import { storage } from "./storage";
 import { pool } from "./db";
 import { startDemoDataGenerator } from "./demo-data";
 import { authenticate, authorize, ROLES, type AuthenticatedRequest } from "./auth";
-import { loginUserSchema, insertUserSchema, insertDriverSchema, insertRouteSchema, type IndianCity } from "@shared/schema";
+import { loginUserSchema, insertUserSchema, insertDriverSchema, insertRouteSchema, type IndianCity, type SimulationParams, insertSupplierSchema } from "@shared/schema";
 import { dijkstraShortestPath } from './storage';
 import { INDIAN_CITY_GRAPH, INDIAN_CITIES } from './demo-data';
-import { SimulationEngine, type SimulationParams } from './simulationEngine';
+import { runSimulation } from './simulationEngine';
+import { detectMetricAnomalies } from './anomalyDetection';
+import { getMLPrediction, getMLExplanation } from './mlService';
 
 // Helper: city-based alert type inference
 function inferCityAlertType(city: string | undefined) {
@@ -430,24 +432,113 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Digital Twin Simulation Endpoint
-  app.post('/api/simulation/run', authenticate, authorize([ROLES.ADMIN, ROLES.MANAGER, ROLES.PLANNER]), async (req, res) => {
+  app.post('/api/simulation/run', authenticate, authorize([ROLES.ADMIN, ROLES.MANAGER, ROLES.ANALYST, ROLES.PLANNER]), async (req, res) => {
     try {
-      const simulationParams = req.body as SimulationParams;
-      
       // Basic validation
-      if (!simulationParams.scenario || !simulationParams.parameters) {
-        return res.status(400).json({ error: 'Missing simulation scenario or parameters' });
+      const params: SimulationParams = req.body as SimulationParams;
+      if (!params || !params.scenario || !params.parameters) {
+        return res.status(400).json({ error: 'Invalid simulation parameters' });
       }
-
-      const engine = new SimulationEngine();
-      const report = await engine.run(simulationParams);
       
+      const report = await runSimulation(params);
+
       res.json(report);
     } catch (error) {
       console.error('Simulation run error:', error);
-      // Check if the error is an instance of Error to safely access the message property
-      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred during simulation.';
-      res.status(500).json({ error: 'Failed to run simulation', details: errorMessage });
+      res.status(500).json({ error: 'Failed to run simulation', details: (error as Error).message });
+    }
+  });
+
+  // Supplier management routes
+  app.get('/api/suppliers', authenticate, authorize([ROLES.ADMIN, ROLES.MANAGER, ROLES.OPERATIONS, ROLES.PLANNER]), async (req, res) => {
+    try {
+      const suppliers = await storage.getAllSuppliers();
+      res.json(suppliers);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch suppliers' });
+    }
+  });
+
+  app.get('/api/suppliers/:id', authenticate, authorize([ROLES.ADMIN, ROLES.MANAGER, ROLES.OPERATIONS, ROLES.PLANNER]), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const supplier = await storage.getSupplier(id);
+      if (!supplier) {
+        return res.status(404).json({ error: 'Supplier not found' });
+      }
+      res.json(supplier);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch supplier' });
+    }
+  });
+
+  app.post('/api/suppliers', authenticate, authorize([ROLES.ADMIN, ROLES.MANAGER]), async (req, res) => {
+    try {
+      const supplierData = insertSupplierSchema.parse(req.body);
+      const supplier = await storage.createSupplier(supplierData);
+      res.status(201).json(supplier);
+    } catch (error) {
+      res.status(400).json({ error: 'Failed to create supplier' });
+    }
+  });
+
+  app.put('/api/suppliers/:id', authenticate, authorize([ROLES.ADMIN, ROLES.MANAGER]), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const updates = req.body;
+      const supplier = await storage.updateSupplier(id, updates);
+      if (!supplier) {
+        return res.status(404).json({ error: 'Supplier not found' });
+      }
+      res.json(supplier);
+    } catch (error) {
+      res.status(400).json({ error: 'Failed to update supplier' });
+    }
+  });
+
+  app.delete('/api/suppliers/:id', authenticate, authorize([ROLES.ADMIN, ROLES.MANAGER]), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const success = await storage.deleteSupplier(id);
+      if (!success) {
+        return res.status(404).json({ error: 'Supplier not found' });
+      }
+      res.json({ message: 'Supplier deleted successfully' });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to delete supplier' });
+    }
+  });
+
+  // Anomaly detection endpoint
+  app.get('/api/anomalies', async (req, res) => {
+    try {
+      const metrics = await storage.getRecentMetrics?.(20) || [];
+      const anomalies = detectMetricAnomalies(metrics);
+      res.json(anomalies);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to detect anomalies' });
+    }
+  });
+
+  // ML Prediction endpoint
+  app.post('/api/ml-predict', async (req, res) => {
+    try {
+      const { data, params } = req.body;
+      const result = await getMLPrediction(data, params);
+      res.json(result);
+    } catch (e) {
+      res.status(500).json({ error: 'ML service error' });
+    }
+  });
+
+  // ML Explanation endpoint
+  app.post('/api/ml-explain', async (req, res) => {
+    try {
+      const { data, params } = req.body;
+      const result = await getMLExplanation(data, params);
+      res.json(result);
+    } catch (e) {
+      res.status(500).json({ error: 'ML explanation service error' });
     }
   });
 

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Play, Pause, RotateCcw, Zap, Cloud, Package, TrendingUp, AlertTriangle } from 'lucide-react';
+import { Play, Pause, RotateCcw, Zap, Cloud, Package, TrendingUp, AlertTriangle, Info } from 'lucide-react';
 import { apiService } from '../services/api';
 import type { SimulationReport } from '@shared/schema';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 
 const DigitalTwin: React.FC = () => {
   const [isSimulating, setIsSimulating] = useState(false);
@@ -10,6 +11,10 @@ const DigitalTwin: React.FC = () => {
   const [simulationResult, setSimulationResult] = useState<SimulationReport | null>(null);
   const [simulationError, setSimulationError] = useState<string | null>(null);
   const [parameters, setParameters] = useState<any>({});
+  const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [history, setHistory] = useState<any[]>([]);
+  const [inventory, setInventory] = useState<any[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
 
   const scenarios = [
     {
@@ -121,8 +126,49 @@ const DigitalTwin: React.FC = () => {
     }
   }, [selectedScenario]);
 
+  // Fetch inventory for dynamic categories
+  useEffect(() => {
+    (async () => {
+      try {
+        const inv = await apiService.getInventoryStatus();
+        setInventory(inv as any[]);
+        const cats = Array.from(new Set((inv as any[]).map((item: any) => item.category || 'Unknown')));
+        setCategories(cats as string[]);
+      } catch {
+        setCategories(['Electronics', 'Apparel', 'Groceries', 'Home Goods']);
+      }
+    })();
+  }, []);
+
+  // Fetch suppliers for Supplier Outage scenario
+  useEffect(() => {
+    if (selectedScenario === 'supplier_outage') {
+      (async () => {
+        try {
+          const result = await apiService.getSuppliers();
+          setSuppliers(result as any[]);
+        } catch {
+          setSuppliers([]);
+        }
+      })();
+    }
+  }, [selectedScenario]);
+
+  // Add to history on simulation complete
+  useEffect(() => {
+    if (simulationResult) {
+      setHistory((prev) => [{
+        scenario: selectedScenario,
+        parameters,
+        summary: simulationResult.summary,
+        impact: simulationResult.impact,
+        timestamp: new Date().toISOString()
+      }, ...prev].slice(0, 5));
+    }
+  }, [simulationResult]);
+
   const handleParameterChange = (key: string, value: any) => {
-    setParameters(prev => ({ ...prev, [key]: value }));
+    setParameters((prev: any) => ({ ...prev, [key]: value }));
   };
 
   const handleSimulation = async () => {
@@ -131,10 +177,7 @@ const DigitalTwin: React.FC = () => {
     setSimulationResult(null);
 
     try {
-      let scenarioToRun: 'demand_spike' | 'weather_event' | 'supplier_outage' = selectedScenario as any;
-      if (selectedScenario === 'peak_season') {
-        scenarioToRun = 'demand_spike';
-      }
+      const scenarioToRun: 'demand_spike' | 'weather_event' | 'supplier_outage' | 'peak_season' = selectedScenario;
       
       const result = await apiService.runSimulation(scenarioToRun, parameters) as SimulationReport;
       setSimulationResult(result);
@@ -152,6 +195,83 @@ const DigitalTwin: React.FC = () => {
     setSimulationResult(null);
     setSimulationError(null);
   }
+
+  const renderParameterInput = (key: string, config: any) => {
+    const label = key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ');
+    const tooltip = config.description || '';
+    if (key === 'supplierId' && selectedScenario === 'supplier_outage') {
+      return (
+        <div key={key} className="relative">
+          <label className="block text-sm text-gray-400 mb-2 capitalize flex items-center">
+            {label}
+            {tooltip && (
+              <span className="ml-1 text-blue-400" aria-label={tooltip} tabIndex={0}>
+                <Info className="w-4 h-4" />
+              </span>
+            )}
+          </label>
+          <select
+            value={parameters[key]}
+            onChange={(e) => handleParameterChange(key, parseInt(e.target.value))}
+            className="w-full bg-gray-700 border border-gray-600 text-white px-3 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            {suppliers.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name} (Reliability: {s.reliability ?? 'N/A'}, Lead: {s.leadTimeDays ?? 'N/A'}d)
+              </option>
+            ))}
+          </select>
+        </div>
+      );
+    }
+    if (config.options) {
+      return (
+        <div key={key} className="relative">
+          <label className="block text-sm text-gray-400 mb-2 capitalize flex items-center">
+            {label}
+            {tooltip && (
+              <span className="ml-1 text-blue-400" aria-label={tooltip} tabIndex={0}>
+                <Info className="w-4 h-4" />
+              </span>
+            )}
+          </label>
+          <select
+            value={parameters[key]}
+            onChange={(e) => handleParameterChange(key, e.target.value)}
+            className="w-full bg-gray-700 border border-gray-600 text-white px-3 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            {config.options.map((option: any) => (
+              <option key={option} value={option}>{option}</option>
+            ))}
+          </select>
+        </div>
+      );
+    }
+    if (typeof config.min !== 'undefined' && typeof config.max !== 'undefined') {
+      return (
+        <div key={key} className="relative">
+          <label className="block text-sm text-gray-400 mb-2 capitalize flex items-center">
+            {label}
+            {tooltip && (
+              <span className="ml-1 text-blue-400" aria-label={tooltip} tabIndex={0}>
+                <Info className="w-4 h-4" />
+              </span>
+            )}
+          </label>
+          <input
+            type="range"
+            min={config.min}
+            max={config.max}
+            value={parameters[key] || config.default}
+            onChange={(e) => handleParameterChange(key, parseInt(e.target.value))}
+            className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
+          />
+          <div className="text-sm text-gray-300 mt-1">{parameters[key] || config.default}{config.unit}</div>
+        </div>
+      );
+    }
+    return null;
+  };
 
   return (
     <div className="p-6 space-y-6 bg-gray-900 min-h-screen">
@@ -233,44 +353,7 @@ const DigitalTwin: React.FC = () => {
         >
           <h3 className="text-xl font-semibold text-white mb-6">Scenario Parameters</h3>
           <div className="space-y-4">
-            {Object.entries(currentScenario.parameters).map(([key, config]: [string, any]) => {
-              const label = key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ');
-
-              if (config.options) {
-                return (
-                  <div key={key}>
-                    <label className="block text-sm text-gray-400 mb-2 capitalize">{label}</label>
-                    <select
-                      value={parameters[key]}
-                      onChange={(e) => handleParameterChange(key, e.target.value)}
-                      className="w-full bg-gray-700 border border-gray-600 text-white px-3 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      {config.options.map((option: any) => (
-                        <option key={option} value={option}>{option}</option>
-                      ))}
-                    </select>
-                  </div>
-                );
-              }
-
-              if (typeof config.min !== 'undefined' && typeof config.max !== 'undefined') {
-                return (
-                  <div key={key}>
-                    <label className="block text-sm text-gray-400 mb-2 capitalize">{label}</label>
-                    <input
-                      type="range"
-                      min={config.min}
-                      max={config.max}
-                      value={parameters[key] || config.default}
-                      onChange={(e) => handleParameterChange(key, parseInt(e.target.value))}
-                      className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
-                    />
-                    <div className="text-sm text-gray-300 mt-1">{parameters[key] || config.default}{config.unit}</div>
-                  </div>
-                );
-              }
-              return null;
-            })}
+            {Object.entries(currentScenario.parameters).map(([key, config]: [string, any]) => renderParameterInput(key, config))}
           </div>
 
           {isSimulating && (
@@ -291,106 +374,164 @@ const DigitalTwin: React.FC = () => {
           )}
         </motion.div>
 
-        {/* Results Panel */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Impact Summary */}
-          <motion.div
-            className="bg-gray-800 rounded-xl p-6 border border-gray-700"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.5 }}
-          >
-            <h3 className="text-xl font-semibold text-white mb-6">Predicted Impact</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="text-center">
-                <div className="w-16 h-16 bg-gradient-to-r from-red-500 to-red-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <Package className="w-8 h-8 text-white" />
-                </div>
-                <h4 className="text-sm text-gray-400 mb-1">Inventory Impact</h4>
-                <p className="text-lg font-semibold text-white">{simulationResult ? `${simulationResult.impact.inventory.stockout_risk_percentage.toFixed(1)}% risk` : currentResults?.inventory_impact}</p>
-              </div>
-              <div className="text-center">
-                <div className="w-16 h-16 bg-gradient-to-r from-yellow-500 to-yellow-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <TrendingUp className="w-8 h-8 text-white" />
-                </div>
-                <h4 className="text-sm text-gray-400 mb-1">Cost Impact</h4>
-                <p className="text-lg font-semibold text-white">{simulationResult ? `~$${simulationResult.impact.cost.change.toFixed(0)}` : currentResults?.cost_impact}</p>
-              </div>
-              <div className="text-center">
-                <div className="w-16 h-16 bg-gradient-to-r from-purple-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <AlertTriangle className="w-8 h-8 text-white" />
-                </div>
-                <h4 className="text-sm text-gray-400 mb-1">SLA Impact</h4>
-                <p className="text-lg font-semibold text-white">{simulationResult ? `${simulationResult.impact.sla.affected_routes} routes affected` : currentResults?.sla_impact}</p>
-              </div>
-            </div>
-          </motion.div>
+        {/* Simulation Results + Charts */}
+        <motion.div
+          className="lg:col-span-2 bg-gray-800 rounded-xl p-8 border border-gray-700"
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.5, delay: 0.5 }}
+        >
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="text-xl font-semibold text-white">Simulation Impact Analysis</h3>
+            <span className={`text-sm font-medium px-3 py-1 rounded-full ${
+              simulationResult ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'
+            }`}>
+              {simulationResult ? 'Completed' : 'Ready to Run'}
+            </span>
+          </div>
 
-          {/* Recommendations */}
-          <motion.div
-            className="bg-gray-800 rounded-xl p-6 border border-gray-700"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.6 }}
-          >
-            <h3 className="text-xl font-semibold text-white mb-6">AI Recommendations</h3>
-            <div className="space-y-4">
-              {(simulationResult ? simulationResult.recommendations : currentResults?.recommendations.map(r => ({ message: r, priority: 'High' })) || []).map((recommendation, index) => (
-                <motion.div
-                  key={index}
-                  className="flex items-start space-x-4 p-4 bg-green-500/10 border border-green-500/20 rounded-lg"
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.3, delay: 0.6 + index * 0.1 }}
-                >
-                  <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <span className="text-white text-sm font-bold">{index + 1}</span>
-                  </div>
-                  <div>
-                    <p className="text-white font-medium">{recommendation.message}</p>
-                    <div className="flex items-center space-x-4 mt-2 text-sm">
-                      <span className="text-green-400">Priority: {recommendation.priority}</span>
-                      <span className="text-gray-400">Impact: {Math.floor(Math.random() * 30 + 70)}%</span>
-                      <span className="text-gray-400">Effort: {['Low', 'Medium', 'High'][index % 3]}</span>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
+          {isSimulating && (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center text-gray-400">
+                <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                <p>Running complex multi-factor analysis...</p>
+              </div>
             </div>
-          </motion.div>
+          )}
+
+          {simulationError && (
+            <div className="flex items-center justify-center h-full text-center text-red-400">
+              <div>
+                <AlertTriangle className="w-12 h-12 mx-auto mb-4" />
+                <h4 className="text-lg font-bold mb-2">Simulation Failed</h4>
+                <p className="text-sm">{simulationError}</p>
+              </div>
+            </div>
+          )}
+
+          {simulationResult && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {/* Key Metrics */}
+              <div>
+                <h4 className="text-lg font-semibold text-white mb-4">Key Metrics Impact</h4>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-4 bg-gray-700/50 rounded-lg">
+                    <span className="text-gray-400">Cost Impact</span>
+                    <span className={`font-bold ${(simulationResult.impact.cost?.change ?? 0) > 0 ? 'text-red-400' : 'text-green-400'}`}>
+                      {(simulationResult.impact.cost?.change ?? 0) > 0 ? '+' : ''}${(simulationResult.impact.cost?.change ?? 0).toFixed(2)} ({simulationResult.impact.cost?.percentage ?? '0%'})
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between p-4 bg-gray-700/50 rounded-lg">
+                    <span className="text-gray-400">SLA Impact</span>
+                    <span className="font-bold text-yellow-400">
+                      {(simulationResult.impact.sla?.total_delay_minutes ?? 0).toFixed(0)} min delay ({(simulationResult.impact.sla?.affected_routes ?? 0)} routes)
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between p-4 bg-gray-700/50 rounded-lg">
+                    <span className="text-gray-400">Carbon Emissions</span>
+                    <span className={`font-bold ${(simulationResult.impact.carbon?.change_kg ?? 0) > 0 ? 'text-red-400' : 'text-green-400'}`}>
+                       {(simulationResult.impact.carbon?.change_kg ?? 0) > 0 ? '+' : ''}{(simulationResult.impact.carbon?.change_kg ?? 0).toFixed(2)} kg ({simulationResult.impact.carbon?.percentage ?? '0%'})
+                    </span>
+                  </div>
+                   <div className="flex items-center justify-between p-4 bg-gray-700/50 rounded-lg">
+                    <span className="text-gray-400">Stockout Risk</span>
+                    <span className="font-bold text-red-400">
+                      {(simulationResult.impact.inventory?.stockout_risk_percentage ?? 0).toFixed(2)}%
+                    </span>
+                  </div>
+                </div>
+                {/* Charts for metrics */}
+                <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-gray-700/50 rounded-lg p-4">
+                    <h5 className="text-sm text-gray-400 mb-2">Cost Impact Over Time</h5>
+                    <ResponsiveContainer width="100%" height={120}>
+                      <LineChart data={history.map(h => ({
+                        time: new Date(h.timestamp).toLocaleTimeString(),
+                        cost: h.impact.cost?.change ?? 0
+                      })).reverse()}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                        <XAxis dataKey="time" stroke="#9CA3AF" fontSize={10} />
+                        <YAxis stroke="#9CA3AF" fontSize={10} />
+                        <RechartsTooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px', color: '#F9FAFB' }} />
+                        <Line type="monotone" dataKey="cost" stroke="#3B82F6" strokeWidth={2} dot={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="bg-gray-700/50 rounded-lg p-4">
+                    <h5 className="text-sm text-gray-400 mb-2">Stockout Risk (%)</h5>
+                    <ResponsiveContainer width="100%" height={120}>
+                      <BarChart data={history.map(h => ({
+                        time: new Date(h.timestamp).toLocaleTimeString(),
+                        stockout: h.impact.inventory?.stockout_risk_percentage ?? 0
+                      })).reverse()}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                        <XAxis dataKey="time" stroke="#9CA3AF" fontSize={10} />
+                        <YAxis stroke="#9CA3AF" fontSize={10} />
+                        <RechartsTooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px', color: '#F9FAFB' }} />
+                        <Bar dataKey="stockout" fill="#EF4444" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+
+              {/* Recommendations */}
+              <div>
+                <h4 className="text-lg font-semibold text-white mb-4">Recommendations</h4>
+                <ul className="space-y-3">
+                  {simulationResult.recommendations.map((rec, index) => (
+                    <li key={index} className="flex items-start">
+                      <div className={`w-2 h-2 rounded-full mt-1.5 mr-3 ${
+                        rec.priority === 'High' ? 'bg-red-500' : rec.priority === 'Medium' ? 'bg-yellow-500' : 'bg-green-500'
+                      }`}></div>
+                      <span className="text-gray-300">{rec.message}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
 
           {/* Simulation History */}
-          <motion.div
-            className="bg-gray-800 rounded-xl p-6 border border-gray-700"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.7 }}
-          >
-            <h3 className="text-xl font-semibold text-white mb-6">Recent Simulations</h3>
-            <div className="space-y-3">
-              {[
-                { scenario: 'Peak Season', timestamp: '2 hours ago', result: 'Optimized inventory positioning', status: 'completed' },
-                { scenario: 'Weather Event', timestamp: '1 day ago', result: 'Alternative routing identified', status: 'completed' },
-                { scenario: 'Supplier Outage', timestamp: '3 days ago', result: 'Backup suppliers activated', status: 'completed' },
-                { scenario: 'Demand Spike', timestamp: '1 week ago', result: 'Capacity scaling recommended', status: 'completed' }
-              ].map((sim, index) => (
-                <div key={index} className="flex items-center justify-between p-3 bg-gray-700/50 rounded-lg">
-                  <div>
-                    <p className="text-white font-medium">{sim.scenario}</p>
-                    <p className="text-sm text-gray-400">{sim.result}</p>
-                  </div>
-                  <div className="text-right">
-                    <div className="flex items-center space-x-2 mb-1">
-                      <div className="w-2 h-2 bg-green-400 rounded-full" />
-                      <span className="text-xs text-green-400 capitalize">{sim.status}</span>
-                    </div>
-                    <p className="text-xs text-gray-500">{sim.timestamp}</p>
-                  </div>
-                </div>
-              ))}
+          {history.length > 0 && (
+            <div className="mt-8">
+              <h4 className="text-lg font-semibold text-white mb-4">Recent Simulation Runs</h4>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm text-gray-300">
+                  <thead>
+                    <tr className="bg-gray-700">
+                      <th className="px-4 py-2 text-left">Time</th>
+                      <th className="px-4 py-2 text-left">Scenario</th>
+                      <th className="px-4 py-2 text-left">Summary</th>
+                      <th className="px-4 py-2 text-left">Cost</th>
+                      <th className="px-4 py-2 text-left">Stockout</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {history.map((h, i) => (
+                      <tr key={i} className="border-b border-gray-700">
+                        <td className="px-4 py-2">{new Date(h.timestamp).toLocaleTimeString()}</td>
+                        <td className="px-4 py-2 capitalize">{h.scenario.replace('_', ' ')}</td>
+                        <td className="px-4 py-2">{h.summary?.description}</td>
+                        <td className="px-4 py-2">${h.impact.cost?.change?.toFixed(2)}</td>
+                        <td className="px-4 py-2">{h.impact.inventory?.stockout_risk_percentage?.toFixed(2)}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </motion.div>
-        </div>
+          )}
+
+          {!isSimulating && !simulationResult && !simulationError && (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center text-gray-400">
+                <Zap className="w-16 h-16 mx-auto mb-4 text-gray-500" />
+                <p>Configure parameters and run a simulation to see the impact.</p>
+              </div>
+            </div>
+          )}
+        </motion.div>
       </div>
     </div>
   );

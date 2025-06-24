@@ -24,7 +24,7 @@ export const drivers = pgTable("drivers", {
   licenseNumber: text("license_number").notNull().unique(),
   vehicleId: text("vehicle_id"),
   status: text("status").notNull().default("available"), // available, assigned, off_duty
-  location: jsonb("location"), // { lat, lng }
+  location: jsonb("location").$type<{ lat: number; lng: number } | null>(), // { lat, lng }
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -85,6 +85,15 @@ export const events = pgTable("events", {
   timestamp: timestamp("timestamp").defaultNow().notNull(),
 });
 
+export const suppliers = pgTable("suppliers", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  reliability: real("reliability").notNull(), // 0-1
+  leadTimeDays: integer("lead_time_days").notNull(),
+  costFactor: real("cost_factor").notNull(),
+  productIds: jsonb("product_ids").$type<number[]>(), // Array of product IDs supplied
+});
+
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   lastLogin: true,
@@ -136,6 +145,16 @@ export const insertEventSchema = createInsertSchema(events).omit({
   timestamp: true,
 });
 
+export const insertSupplierSchema = createInsertSchema(suppliers, {
+  productIds: z.array(z.number()),
+}).omit({
+  id: true,
+});
+
+export const selectSupplierSchema = createSelectSchema(suppliers, {
+  productIds: z.array(z.number()),
+});
+
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type LoginUser = z.infer<typeof loginUserSchema>;
 export type User = typeof users.$inferSelect;
@@ -150,6 +169,8 @@ export type SystemMetrics = typeof systemMetrics.$inferSelect;
 export type InsertEvent = z.infer<typeof insertEventSchema>;
 export type Event = typeof events.$inferSelect;
 export type UserSession = typeof userSessions.$inferSelect;
+export type InsertSupplier = z.infer<typeof insertSupplierSchema>;
+export type Supplier = z.infer<typeof selectSupplierSchema>;
 
 export type IndianCity = { name: string; lat: number; lng: number };
 
@@ -184,8 +205,17 @@ export type SupplierOutageParams = {
   };
 };
 
+export type PeakSeasonParams = {
+  scenario: 'peak_season';
+  parameters: {
+    increasePercentage: number;
+    duration: number;
+    preparationTime: number;
+  };
+};
+
 // Create a discriminated union of all possible simulation parameter types
-export type SimulationParams = WeatherEventParams | DemandSpikeParams | SupplierOutageParams;
+export type SimulationParams = WeatherEventParams | DemandSpikeParams | SupplierOutageParams | PeakSeasonParams;
 
 export type SimulationReport = {
   summary: {

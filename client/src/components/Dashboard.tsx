@@ -22,17 +22,20 @@ const Dashboard: React.FC = () => {
   const { data: realTimeData, isConnected, lastUpdate } = useRealTimeData();
   const [demandForecastData, setDemandForecastData] = useState<any[]>([]);
   const [systemHealth, setSystemHealth] = useState<any>(null);
+  const [anomalies, setAnomalies] = useState<any[]>([]);
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [forecastData, healthData] = await Promise.all([
+        const [forecastData, healthData, anomalyData] = await Promise.all([
           apiService.getDemandForecast(),
-          apiService.getSystemHealth()
+          apiService.getSystemHealth(),
+          apiService.getAnomalies()
         ]);
         
         setDemandForecastData(forecastData.forecast);
         setSystemHealth(healthData);
+        setAnomalies(anomalyData as any[]);
       } catch (error) {
         console.error('Failed to load dashboard data:', error);
       }
@@ -135,6 +138,22 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
       </motion.div>
+
+      {/* Anomaly Alert Banner */}
+      {anomalies.length > 0 && (
+        <motion.div
+          className="flex items-center space-x-3 p-4 bg-red-600/90 border border-red-700 rounded-lg mb-6 animate-pulse"
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+        >
+          <AlertTriangle className="w-6 h-6 text-white" />
+          <div>
+            <span className="text-white font-bold">{anomalies.length} System Anomal{anomalies.length === 1 ? 'y' : 'ies'} Detected!</span>
+            <span className="block text-xs text-white/80 mt-1">Check the Anomalies panel for details.</span>
+          </div>
+        </motion.div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -318,7 +337,12 @@ const Dashboard: React.FC = () => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.7 }}
         >
-          <h3 className="text-xl font-semibold text-white mb-6">Active Alerts</h3>
+          <div className="flex items-center space-x-2 mb-2">
+            <h3 className="text-xl font-semibold text-white">Active Alerts</h3>
+            {anomalies.length > 0 && (
+              <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full animate-pulse">{anomalies.length} Anomal{anomalies.length === 1 ? 'y' : 'ies'}</span>
+            )}
+          </div>
           <div className="space-y-4">
             <div className="flex items-start space-x-3 p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
               <AlertTriangle className="w-5 h-5 text-red-400 mt-0.5" />

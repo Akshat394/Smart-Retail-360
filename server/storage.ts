@@ -19,13 +19,17 @@ import {
   type SystemMetrics,
   type InsertSystemMetrics,
   type Event,
-  type InsertEvent
+  type InsertEvent,
+  type InsertSupplier,
+  type Supplier,
+  suppliers
 } from "@shared/schema";
+import { suppliers as suppliersSchema } from '../shared/schema';
 import { db } from "./db";
 import { eq, desc, sql, and, inArray } from "drizzle-orm";
 import * as bcrypt from "bcrypt";
 import { randomBytes } from "crypto";
-import { INDIAN_CITY_GRAPH, INDIAN_CITIES } from './demo-data';
+import { INDIAN_CITY_GRAPH, INDIAN_CITIES } from './demo-data.js';
 
 export interface IStorage {
   // User management
@@ -59,6 +63,15 @@ export interface IStorage {
   insertMetrics(metrics: InsertSystemMetrics): Promise<SystemMetrics>;
   getRecentEvents(limit?: number): Promise<Event[]>;
   insertEvent(event: InsertEvent): Promise<Event>;
+
+  // Supplier management
+  getAllSuppliers(): Promise<Supplier[]>;
+  getSupplier(id: number): Promise<Supplier | undefined>;
+  createSupplier(supplier: InsertSupplier): Promise<Supplier>;
+  updateSupplier(id: number, updates: Partial<InsertSupplier>): Promise<Supplier | undefined>;
+  deleteSupplier(id: number): Promise<boolean>;
+
+  getRecentMetrics(limit?: number): Promise<SystemMetrics[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -292,6 +305,47 @@ export class DatabaseStorage implements IStorage {
       .values(insertEvent)
       .returning();
     return event;
+  }
+
+  // Supplier management
+  async getAllSuppliers(): Promise<Supplier[]> {
+    const rows = await db.select().from(suppliersSchema);
+    return rows.map(s => ({ ...s, productIds: s.productIds ?? [] }));
+  }
+
+  async getSupplier(id: number): Promise<Supplier | undefined> {
+    const [supplier] = await db.select().from(suppliersSchema).where(eq(suppliersSchema.id, id));
+    return supplier ? { ...supplier, productIds: supplier.productIds ?? [] } : undefined;
+  }
+
+  async createSupplier(insertSupplier: InsertSupplier): Promise<Supplier> {
+    const [supplier] = await db
+      .insert(suppliersSchema)
+      .values(insertSupplier)
+      .returning();
+    return { ...supplier, productIds: supplier.productIds ?? [] };
+  }
+
+  async updateSupplier(id: number, updates: Partial<InsertSupplier>): Promise<Supplier | undefined> {
+    const [supplier] = await db
+      .update(suppliersSchema)
+      .set(updates)
+      .where(eq(suppliersSchema.id, id))
+      .returning();
+    return supplier ? { ...supplier, productIds: supplier.productIds ?? [] } : undefined;
+  }
+
+  async deleteSupplier(id: number): Promise<boolean> {
+    const result = await db.delete(suppliersSchema).where(eq(suppliersSchema.id, id));
+    return (result.rowCount || 0) > 0;
+  }
+
+  async getRecentMetrics(limit: number = 20): Promise<SystemMetrics[]> {
+    return await db
+      .select()
+      .from(systemMetrics)
+      .orderBy(desc(systemMetrics.timestamp))
+      .limit(limit);
   }
 }
 

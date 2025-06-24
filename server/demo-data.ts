@@ -1,6 +1,6 @@
-import { storage } from "./storage";
-import { db } from './db';
-import { routes, type IndianCity } from '../shared/schema';
+import { storage } from "./storage.js";
+import { db } from './db.js';
+import { routes, type IndianCity, suppliers } from '../shared/schema';
 import { eq } from "drizzle-orm";
 
 // List of real Indian cities with coordinates
@@ -24,7 +24,8 @@ export const INDIAN_CITIES: ReadonlyArray<IndianCity> = [
   { name: 'Ghaziabad', lat: 28.6692, lng: 77.4538 },
   { name: 'Ludhiana', lat: 30.9005, lng: 75.8573 },
   { name: 'Agra', lat: 27.1767, lng: 78.0081 },
-  { name: 'Nashik', lat: 19.9975, lng: 73.7898 }
+  { name: 'Nashik', lat: 19.9975, lng: 73.7898 },
+  { name: 'Varanasi', lat: 25.3176, lng: 82.9739 },
 ];
 
 // New Delhi HQ coordinates
@@ -134,6 +135,9 @@ export const INDIAN_CITY_GRAPH: Record<string, { to: string; distance: number }[
     { to: 'Indore', distance: 190 },
     { to: 'Nagpur', distance: 350 },
   ],
+  'Varanasi': [
+    { to: 'Lucknow', distance: 320 },
+  ],
   // Add more connections as needed
 };
 
@@ -196,4 +200,41 @@ export async function seedRoutesWithIndianCities() {
     }
   }
   console.log('Seeded routes with real Indian cities.');
+}
+
+export const MOCK_SUPPLIERS = [
+  { id: 1, name: 'Global Electronics Inc.', productIds: [101, 102, 105], reliability: 0.98, leadTimeDays: 14, costFactor: 1.0 },
+  { id: 2, name: 'Fashion Forward Fabrics', productIds: [201, 202, 203], reliability: 0.95, leadTimeDays: 20, costFactor: 1.0 },
+  { id: 3, name: 'Fresh Produce Partners', productIds: [301, 302, 303, 304], reliability: 0.99, leadTimeDays: 2, costFactor: 1.0 },
+  { id: 4, name: 'Home Essentials Co.', productIds: [401, 402, 403], reliability: 0.97, leadTimeDays: 25, costFactor: 1.0 },
+  { id: 5, name: 'Backup Electronics Ltd.', productIds: [101, 102, 105], reliability: 0.92, leadTimeDays: 10, costFactor: 1.3 }, // more expensive backup
+];
+
+export const MOCK_PRODUCT_INVENTORY = [
+  { id: 101, name: 'Laptop', category: 'Electronics', dailyConsumption: 50, stock: 2000 },
+  { id: 102, name: 'Smartphone', category: 'Electronics', dailyConsumption: 150, stock: 5000 },
+  { id: 201, name: 'T-Shirt', category: 'Apparel', dailyConsumption: 300, stock: 10000 },
+  { id: 301, name: 'Apples', category: 'Groceries', dailyConsumption: 1000, stock: 7000 },
+  { id: 401, name: 'Desk Chair', category: 'Home Goods', dailyConsumption: 30, stock: 1000 },
+];
+
+export async function seedSuppliers() {
+  const demoSuppliers = [
+    { name: 'Global Electronics Inc.', reliability: 0.98, leadTimeDays: 14, costFactor: 1.0, productIds: [101, 102, 105] },
+    { name: 'Fashion Forward Fabrics', reliability: 0.95, leadTimeDays: 20, costFactor: 1.0, productIds: [201, 202, 203] },
+    { name: 'Fresh Produce Partners', reliability: 0.99, leadTimeDays: 2, costFactor: 1.0, productIds: [301, 302, 303, 304] },
+    { name: 'Home Essentials Co.', reliability: 0.97, leadTimeDays: 25, costFactor: 1.0, productIds: [401, 402, 403] },
+    { name: 'Backup Electronics Ltd.', reliability: 0.92, leadTimeDays: 10, costFactor: 1.3, productIds: [101, 102, 105] },
+  ];
+  for (const s of demoSuppliers) {
+    const exists = await db.query.suppliers.findFirst({ where: eq(suppliers.name, s.name) });
+    if (!exists) {
+      await db.insert(suppliers).values(s);
+    }
+  }
+  console.log('Seeded suppliers table with demo data.');
+}
+
+if (process.argv.includes('--seed-suppliers')) {
+  seedSuppliers().then(() => process.exit(0));
 }

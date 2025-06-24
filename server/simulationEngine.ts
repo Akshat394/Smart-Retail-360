@@ -1,7 +1,11 @@
-import { storage } from "./storage";
-import { dijkstraShortestPath } from './storage';
-import { INDIAN_CITY_GRAPH, INDIAN_CITIES } from './demo-data';
-import type { Route, SimulationParams, SimulationReport, WeatherEventParams, DemandSpikeParams, SupplierOutageParams } from "@shared/schema";
+import {
+  type SimulationParams,
+  type SimulationReport,
+  type Route,
+} from '@shared/schema';
+import { storage, dijkstraShortestPath } from './storage';
+import { INDIAN_CITY_GRAPH, INDIAN_CITIES, MOCK_PRODUCT_INVENTORY } from './demo-data';
+import type { WeatherEventParams, DemandSpikeParams, SupplierOutageParams } from "@shared/schema";
 
 // Define realistic impact factors for various simulation scenarios.
 // These values help translate qualitative severity into quantitative impact.
@@ -52,293 +56,290 @@ const MOCK_SUPPLIER_DATA = {
   3: { name: 'Supplier Gamma', backupSupplierId: 1 },
 };
 
-export class SimulationEngine {
-  constructor() {
-    // In the future, we could inject dependencies like a logger here.
-  }
+// --- Helper Functions ---
+function cloneGraph(graph: typeof INDIAN_CITY_GRAPH): typeof INDIAN_CITY_GRAPH {
+  return JSON.parse(JSON.stringify(graph));
+}
 
-  public async run(params: SimulationParams): Promise<SimulationReport> {
-    switch (params.scenario) {
-      case 'weather_event':
-        return this.runWeatherEvent(params);
-      case 'demand_spike':
-        return this.runDemandSpike(params);
-      case 'supplier_outage':
-        return this.runSupplierOutage(params);
-      default:
-        // This case should ideally be unreachable due to TypeScript's discriminated union
-        const _exhaustiveCheck: never = params;
-        throw new Error(`Invalid simulation scenario: ${(_exhaustiveCheck as any)?.scenario}`);
-    }
-  }
+const VEHICLE_SPEED_KMPH = 60;
+const FUEL_COST_PER_KM = 0.15; // USD
+const CO2_EMISSION_G_PER_KM = 180;
+const DAILY_OPERATIONAL_COST = 200; // Per vehicle
 
-  private async runWeatherEvent(params: WeatherEventParams): Promise<SimulationReport> {
-    const { city, eventType, severity } = params.parameters;
-    
-    // Fetch all active routes
-    const allRoutes = await storage.getAllRoutes();
-    const activeRoutes = allRoutes.filter(r => r.status === 'active' && r.destination && r.coordinates);
-    
-    const eventCity = INDIAN_CITIES.find(c => c.name.toLowerCase() === city.toLowerCase());
-    if (!eventCity) {
-      throw new Error(`City '${city}' not found in the list of Indian cities.`);
-    }
+function calculateRouteMetrics(distance: number) {
+  const durationMinutes = (distance / VEHICLE_SPEED_KMPH) * 60;
+  const fuelCost = distance * FUEL_COST_PER_KM;
+  const co2EmissionKg = (distance * CO2_EMISSION_G_PER_KM) / 1000;
+  return { durationMinutes, fuelCost, co2EmissionKg };
+}
 
-    // Identify affected routes (within 100km of the event city)
-    const affectedRoutes = activeRoutes.filter(route => {
-      const routeCoords = route.coordinates as { lat: number, lng: number };
-      const distance = getDistance(eventCity.lat, eventCity.lng, routeCoords.lat, routeCoords.lng);
-      return distance < 100;
-    });
+// --- Scenario Implementations ---
 
-    if (affectedRoutes.length === 0) {
-      return this.generateMockReport('Weather Event - No routes affected');
-    }
+async function runWeatherEvent(params: any): Promise<SimulationReport> {
+  const { city, severity } = params;
+  const activeRoutes = await storage.getAllRoutes();
+  const affectedRoutes = activeRoutes.filter(r => {
+    if (r.destination && r.destination.includes(city)) return true;
+    const stops = Array.isArray(r.stops) ? r.stops : (Array.isArray((r.stops as any)?.toArray) ? (r.stops as any).toArray() : []);
+    return Array.isArray(stops) && stops.includes(city);
+  });
 
-    // Simulate disruption and re-optimize
-    const modifiedGraph = JSON.parse(JSON.stringify(INDIAN_CITY_GRAPH)); // Deep copy
-    const impactFactor = IMPACT_FACTORS.weather[eventType][severity];
-
-    for (const cityNode in modifiedGraph) {
-      if (cityNode.toLowerCase() === city.toLowerCase()) {
-        for (const connection of modifiedGraph[cityNode]) {
-          if (eventType === 'flood') {
-            // Remove a percentage of connections for floods
-            if (Math.random() < impactFactor) {
-              connection.distance = Infinity;
-            }
-          } else {
-            // Increase distance (cost) for other events to simulate slower travel
-            connection.distance /= impactFactor;
-          }
-        }
+  const modifiedGraph = cloneGraph(INDIAN_CITY_GRAPH);
+  const severityMultiplier = { low: 1.5, medium: 2.5, high: 5 }[severity as 'low' | 'medium' | 'high'];
+  
+  // Increase travel distance for routes connected to the affected city
+  for (const origin in modifiedGraph) {
+    modifiedGraph[origin] = modifiedGraph[origin].map(edge => {
+      if (edge.to === city) {
+        return { ...edge, distance: edge.distance * severityMultiplier };
       }
-    }
-
-    let totalCostChange = 0;
-    let totalDelayMinutes = 0;
-    let totalCarbonChange = 0;
-    const reroutedPaths: any[] = [];
-
-    for (const route of affectedRoutes) {
-      const originalDistance = route.distance || 0;
-      const startNode = 'New Delhi'; // Assuming all routes start from a central HQ for this simulation
-      const endNode = route.destination;
-
-      const reroutedResult = dijkstraShortestPath(modifiedGraph, startNode, endNode);
-      if (reroutedResult.distance === Infinity) continue; // No path found
-
-      const newDistance = reroutedResult.distance;
-
-      // Calculate impact
-      const distanceChange = newDistance - originalDistance;
-      totalCostChange += (distanceChange / originalDistance) * (route.fuelCost || 0);
-      totalDelayMinutes += (distanceChange / originalDistance) * (route.estimatedTime || 0);
-      totalCarbonChange += (distanceChange / originalDistance) * (route.co2Emission || 0);
-      
-      reroutedPaths.push({
-        routeId: route.routeId,
-        originalDistance,
-        newDistance,
-        path: reroutedResult.path,
-      });
-    }
-
-    // Generate recommendations based on impact
-    const recommendations: SimulationReport['recommendations'] = [];
-    if (totalDelayMinutes > 60 * affectedRoutes.length) {
-      recommendations.push({
-        priority: 'High',
-        message: `Significant delays expected. Proactively notify ${affectedRoutes.length} affected customers.`
-      });
-    }
-    if (totalCostChange > 5000) {
-      recommendations.push({
-        priority: 'Medium',
-        message: `Cost increase is substantial. Review contracts with carriers for emergency clauses.`
-      });
-    }
-    recommendations.push({
-      priority: 'Low',
-      message: 'Monitor weather updates and adjust warehouse staffing for new arrival times.'
+      return edge;
     });
-
-    return {
-      summary: {
-        scenario: 'Weather Event',
-        description: `Simulation of a ${severity} ${eventType} in ${city}.`,
-      },
-      impact: {
-        cost: {
-          change: totalCostChange,
-          percentage: totalCostChange > 0 ? `+${((totalCostChange / 10000) * 100).toFixed(1)}%` : '-0%',
-        },
-        sla: {
-          total_delay_minutes: totalDelayMinutes,
-          affected_routes: affectedRoutes.length,
-        },
-        carbon: {
-          change_kg: totalCarbonChange,
-          percentage: totalCarbonChange > 0 ? `+${((totalCarbonChange / 500) * 100).toFixed(1)}%` : '-0%',
-        },
-        inventory: {
-          // Mocked as we don't have cargo data per route yet
-          stockout_risk_percentage: Math.min(95, (totalDelayMinutes / (60 * affectedRoutes.length)) * 15),
-          affected_products: [101, 102],
-        },
-      },
-      recommendations,
-      details: {
-        affectedRoutes: affectedRoutes.map(r => ({ routeId: r.routeId, destination: r.destination })),
-        reroutedPaths,
-      },
-    };
   }
 
-  private async runDemandSpike(params: DemandSpikeParams): Promise<SimulationReport> {
-    const { increasePercentage, duration, productCategory, region } = params.parameters;
+  let totalOriginalDistance = 0;
+  let totalReroutedDistance = 0;
+  let totalOriginalDuration = 0;
+  let totalReroutedDuration = 0;
 
-    // 1. Fetch relevant inventory. For this demo, we'll use mock data.
-    const relevantProductIds = Object.keys(MOCK_INVENTORY_DATA).map(Number);
-    const inventory = await storage.getInventoryForProducts(relevantProductIds);
+  const reroutedPaths: any[] = [];
+  for (const route of affectedRoutes) {
+    const origin = ((route.stops as unknown) as any[])[0];
+    const destination = route.destination;
 
-    // 2. Calculate simulated demand and project inventory levels.
+    totalOriginalDistance += route.distance ?? 0;
+    totalOriginalDuration += route.estimatedTime ?? 0;
+    
+    const { path, distance } = dijkstraShortestPath(modifiedGraph, origin, destination);
+    reroutedPaths.push({ routeId: route.routeId, newPath: path, newDistance: distance });
+    totalReroutedDistance += distance;
+    totalReroutedDuration += (distance / VEHICLE_SPEED_KMPH) * 60;
+  }
+
+  const { fuelCost: originalFuelCost, co2EmissionKg: originalCo2 } = calculateRouteMetrics(totalOriginalDistance);
+  const { fuelCost: reroutedFuelCost, co2EmissionKg: reroutedCo2 } = calculateRouteMetrics(totalReroutedDistance);
+
+  const costChange = reroutedFuelCost - originalFuelCost;
+  const co2Change = reroutedCo2 - originalCo2;
+  const delayMinutes = totalReroutedDuration - totalOriginalDuration;
+  
+  return {
+    summary: {
+      scenario: "Weather Event",
+      description: `Simulated a ${severity} ${params.eventType} in ${city}.`,
+    },
+    impact: {
+      cost: { change: costChange, percentage: ((costChange / originalFuelCost) * 100).toFixed(2) + '%' },
+      sla: { total_delay_minutes: delayMinutes, affected_routes: affectedRoutes.length },
+      carbon: { change_kg: co2Change, percentage: ((co2Change / originalCo2) * 100).toFixed(2) + '%' },
+      inventory: { stockout_risk_percentage: 0, affected_products: [] }
+    },
+    recommendations: [{
+      priority: 'High',
+      message: `Reroute all traffic away from ${city} and notify downstream customers of potential delays.`
+    }],
+    details: { affectedRoutes, reroutedPaths }
+  };
+}
+
+async function getInventoryOrMock() {
+  const dbInventory = await storage.getAllInventory();
+  if (dbInventory && dbInventory.length > 0) {
+    // Map DB inventory to the expected shape for simulation
+    return dbInventory.map(inv => ({
+      id: inv.id,
+      name: inv.productName || `Product ${inv.id}`,
+      category: 'Unknown', // You may want to add category to your DB schema for full realism
+      dailyConsumption: 50, // Placeholder, as DB does not have this field
+      stock: inv.quantity
+    }));
+  }
+  // fallback to mock
+  return [
+    { id: 101, name: 'Laptop', category: 'Electronics', dailyConsumption: 50, stock: 2000 },
+    { id: 102, name: 'Smartphone', category: 'Electronics', dailyConsumption: 150, stock: 5000 },
+    { id: 201, name: 'T-Shirt', category: 'Apparel', dailyConsumption: 300, stock: 10000 },
+    { id: 301, name: 'Apples', category: 'Groceries', dailyConsumption: 1000, stock: 7000 },
+    { id: 401, name: 'Desk Chair', category: 'Home Goods', dailyConsumption: 30, stock: 1000 },
+  ];
+}
+
+async function getSuppliersOrMock() {
+  const dbSuppliers = await storage.getAllSuppliers();
+  if (dbSuppliers && dbSuppliers.length > 0) return dbSuppliers;
+  // fallback to mock
+  return [
+    { id: 1, name: 'Global Electronics Inc.', reliability: 0.98, leadTimeDays: 14, costFactor: 1.0, productIds: [101, 102, 105] },
+    { id: 2, name: 'Fashion Forward Fabrics', reliability: 0.95, leadTimeDays: 20, costFactor: 1.0, productIds: [201, 202, 203] },
+    { id: 3, name: 'Fresh Produce Partners', reliability: 0.99, leadTimeDays: 2, costFactor: 1.0, productIds: [301, 302, 303, 304] },
+    { id: 4, name: 'Home Essentials Co.', reliability: 0.97, leadTimeDays: 25, costFactor: 1.0, productIds: [401, 402, 403] },
+    { id: 5, name: 'Backup Electronics Ltd.', reliability: 0.92, leadTimeDays: 10, costFactor: 1.3, productIds: [101, 102, 105] },
+  ];
+}
+
+async function runDemandSpike(params: any): Promise<SimulationReport> {
+  const { increasePercentage, duration, productCategory } = params;
+
+  const inventory = await getInventoryOrMock();
+  const affectedProducts = inventory.filter(p => p.category === productCategory);
+  let totalExtraDemand = 0;
+  let stockoutRisk = 0;
+  let productsAtRisk: number[] = [];
+
+  for (const product of affectedProducts) {
+    const dailyDemand = product.dailyConsumption;
+    const spikeDemand = dailyDemand * (1 + increasePercentage / 100);
+    const totalDemandDuringSpike = spikeDemand * duration;
+    totalExtraDemand += (spikeDemand - dailyDemand) * duration;
+
+    if (product.stock < totalDemandDuringSpike) {
+      stockoutRisk += (totalDemandDuringSpike - product.stock) / totalDemandDuringSpike;
+      productsAtRisk.push(product.id);
+    }
+  }
+
+  const avgStockoutRisk = productsAtRisk.length > 0 ? (stockoutRisk / productsAtRisk.length) * 100 : 0;
+  // Estimate cost impact: assume 10% of extra demand requires expedited shipping at 2x cost
+  const expeditedCost = (totalExtraDemand * 0.1) * 5; // Assuming avg product cost of $5
+
+  return {
+    summary: {
+      scenario: "Demand Spike",
+      description: `Simulated a ${increasePercentage}% demand spike for ${productCategory} over ${duration} days.`,
+    },
+    impact: {
+      cost: { change: expeditedCost, percentage: `~5-10%` }, // Simplified
+      sla: { total_delay_minutes: 0, affected_routes: 0 },
+      carbon: { change_kg: expeditedCost * 0.05, percentage: `~2-4%` }, // Simplified
+      inventory: { stockout_risk_percentage: avgStockoutRisk, affected_products: productsAtRisk }
+    },
+    recommendations: [{
+      priority: 'Medium',
+      message: `Increase inventory for ${productCategory} products and allocate more delivery vehicles.`
+    }],
+    details: { affectedRoutes: [], reroutedPaths: [] }
+  };
+}
+
+async function runSupplierOutage(params: any): Promise<SimulationReport> {
+    const { supplierId, impactPercentage, duration } = params;
+    const suppliers = await getSuppliersOrMock();
+    const mainSupplier = suppliers.find((s: any) => s.id === supplierId);
+    if (!mainSupplier) throw new Error("Supplier not found");
+
+    const backupSupplier = suppliers.find((s: any) => s.id !== supplierId && s.productIds.some((pid: number) => mainSupplier.productIds.includes(pid)));
+
+    const inventory = await getInventoryOrMock();
+    const affectedProducts = inventory.filter(p => mainSupplier.productIds.includes(p.id));
     let totalStockoutDays = 0;
     let productsAtRisk: number[] = [];
+    let extraCost = 0;
 
-    for (const item of inventory) {
-      const mockData = MOCK_INVENTORY_DATA[item.id as keyof typeof MOCK_INVENTORY_DATA];
-      if (!mockData) continue;
+    for (const product of affectedProducts) {
+        const dailySupply = product.dailyConsumption; // Assume supply matches consumption
+        const reducedSupply = dailySupply * (1 - impactPercentage / 100);
+        const dailyDeficit = dailySupply - reducedSupply;
+        const daysUntilStockout = product.stock / dailyDeficit;
+        
+        if (daysUntilStockout < duration) {
+            totalStockoutDays += (duration - daysUntilStockout);
+            productsAtRisk.push(product.id);
 
-      const baseDemand = mockData.daily_consumption;
-      const simulatedDemand = baseDemand * (1 + increasePercentage / 100);
-      
-      const daysUntilStockout = item.quantity / simulatedDemand;
-      if (daysUntilStockout < duration) {
-        totalStockoutDays += (duration - daysUntilStockout);
-        productsAtRisk.push(item.id);
-      }
-    }
-    
-    const stockoutRiskPercentage = (totalStockoutDays / (inventory.length * duration)) * 100;
-
-    // 3. Generate recommendations
-    const recommendations: SimulationReport['recommendations'] = [];
-    if (stockoutRiskPercentage > 20) {
-      recommendations.push({
-        priority: 'High',
-        message: `High stockout risk of ${stockoutRiskPercentage.toFixed(1)}%. Recommend pre-positioning stock in the ${region} region.`
-      });
-      recommendations.push({
-        priority: 'Medium',
-        message: 'Consider activating backup suppliers for at-risk products.'
-      });
-    } else {
-      recommendations.push({
-        priority: 'Low',
-        message: 'Monitor inventory levels closely and prepare for increased fulfillment activity.'
-      });
-    }
-
-    return {
-      summary: {
-        scenario: 'Demand Spike',
-        description: `Simulation of a ${increasePercentage}% demand increase for ${duration} days in the ${region} region.`,
-      },
-      impact: {
-        cost: { change: stockoutRiskPercentage * 2000, percentage: `+${(stockoutRiskPercentage * 0.5).toFixed(1)}%` },
-        sla: { total_delay_minutes: 0, affected_routes: 0 },
-        carbon: { change_kg: 0, percentage: '+0%' },
-        inventory: { stockout_risk_percentage: stockoutRiskPercentage, affected_products: productsAtRisk },
-      },
-      recommendations,
-      details: { affectedRoutes: [], reroutedPaths: [] },
-    };
-  }
-
-  private async runSupplierOutage(params: SupplierOutageParams): Promise<SimulationReport> {
-    const { supplierId, impactPercentage, duration } = params.parameters;
-
-    // 1. Identify affected products
-    const affectedProductIds = Object.entries(MOCK_INVENTORY_DATA)
-      .filter(([, data]) => data.supplierId === supplierId)
-      .map(([id]) => Number(id));
-
-    const inventory = await storage.getInventoryForProducts(affectedProductIds);
-
-    // 2. Simulate supply reduction and project stock levels
-    let totalStockoutDays = 0;
-    
-    for (const item of inventory) {
-      const mockData = MOCK_INVENTORY_DATA[item.id as keyof typeof MOCK_INVENTORY_DATA];
-      const baseDemand = mockData.daily_consumption;
-      // Incoming supply is assumed to match demand, so we simulate a reduction
-      const incomingSupply = baseDemand * (1 - impactPercentage / 100);
-      const dailyNetChange = incomingSupply - baseDemand;
-
-      let currentQuantity = item.quantity;
-      for (let day = 1; day <= duration; day++) {
-        currentQuantity += dailyNetChange;
-        if (currentQuantity <= 0) {
-          totalStockoutDays += (duration - day + 1);
-          break; // Stop counting for this item once it stocks out
+            // Calculate cost of using backup supplier
+            if (backupSupplier) {
+                const deficitToCover = (duration - daysUntilStockout) * dailyDeficit;
+                const productCost = 10; // Avg cost
+                const mainCost = deficitToCover * productCost * mainSupplier.costFactor;
+                const backupCost = deficitToCover * productCost * backupSupplier.costFactor;
+                extraCost += (backupCost - mainCost);
+            }
         }
-      }
     }
 
-    const stockoutRiskPercentage = (totalStockoutDays / (inventory.length * duration)) * 100;
+    const avgStockoutRisk = productsAtRisk.length > 0 ? (totalStockoutDays / (productsAtRisk.length * duration)) * 100 : 0;
 
-    // 3. Generate recommendations
-    const backupSupplier = MOCK_SUPPLIER_DATA[supplierId as keyof typeof MOCK_SUPPLIER_DATA]?.backupSupplierId;
-    const recommendations: SimulationReport['recommendations'] = [];
-    if (stockoutRiskPercentage > 30) {
-      recommendations.push({
-        priority: 'High',
-        message: `Critical stockout risk of ${stockoutRiskPercentage.toFixed(1)}%. Immediately engage backup supplier (ID: ${backupSupplier}).`
-      });
-    } else {
-       recommendations.push({
-        priority: 'Medium',
-        message: `Moderate stockout risk detected. Begin sourcing negotiations with backup supplier (ID: ${backupSupplier}).`
-      });
-    }
-
-     return {
-      summary: {
-        scenario: 'Supplier Outage',
-        description: `Simulation of a ${impactPercentage}% supply reduction from Supplier ${supplierId} for ${duration} days.`,
-      },
-      impact: {
-        cost: { change: stockoutRiskPercentage * 3000, percentage: `+${(stockoutRiskPercentage * 0.7).toFixed(1)}%` },
-        sla: { total_delay_minutes: 0, affected_routes: 0 },
-        carbon: { change_kg: 0, percentage: '+0%' },
-        inventory: { stockout_risk_percentage: stockoutRiskPercentage, affected_products: affectedProductIds },
-      },
-      recommendations,
-      details: { affectedRoutes: [], reroutedPaths: [] },
-    };
-  }
-  
-  private generateMockReport(scenario: string): SimulationReport {
     return {
-      summary: {
-        scenario,
-        description: `This is a simulated report for a ${scenario.toLowerCase()} scenario. Full data will be available upon implementation.`,
-      },
-      impact: {
-        cost: { change: 15000, percentage: '+12%' },
-        sla: { total_delay_minutes: 4800, affected_routes: 15 },
-        carbon: { change_kg: 850, percentage: '+8%' },
-        inventory: { stockout_risk_percentage: 35, affected_products: [101, 102, 105] },
-      },
-      recommendations: [
-        { priority: 'High', message: 'Activate alternative routing protocols for the affected region.' },
-        { priority: 'Medium', message: 'Increase safety stock for high-demand products in nearby warehouses.' },
-      ],
-      details: {
-        affectedRoutes: [{ routeId: 'ROUTE-MUMBAI', destination: 'Mumbai' }],
-        reroutedPaths: [{ from: 'Pune', to: 'Ahmedabad', new_distance: 600 }],
-      },
+        summary: {
+            scenario: "Supplier Outage",
+            description: `Simulated a ${impactPercentage}% outage for supplier "${mainSupplier.name}" for ${duration} days.`,
+        },
+        impact: {
+            cost: { change: extraCost, percentage: "~15-30%" },
+            sla: { total_delay_minutes: 0, affected_routes: 0 },
+            carbon: { change_kg: extraCost * 0.03, percentage: "~1-2%" },
+            inventory: { stockout_risk_percentage: avgStockoutRisk, affected_products: productsAtRisk }
+        },
+        recommendations: [{
+            priority: 'High',
+            message: `Immediately engage backup supplier "${backupSupplier?.name}" and verify their capacity.`
+        }],
+        details: { affectedRoutes: [], reroutedPaths: [] }
     };
+}
+
+async function runPeakSeason(params: any): Promise<SimulationReport> {
+    const { increasePercentage, duration, preparationTime } = params;
+
+    const inventory = await getInventoryOrMock();
+    let totalProjectedDemand = 0;
+    let totalSupplyFromBuildup = 0;
+    let productsAtRisk: number[] = [];
+
+    for (const product of inventory) {
+        const normalDailyDemand = product.dailyConsumption;
+        const peakDailyDemand = normalDailyDemand * (1 + increasePercentage / 100);
+        
+        totalProjectedDemand += peakDailyDemand * duration;
+        
+        // Calculate how much extra inventory can be built up
+        const inventoryBuildup = normalDailyDemand * preparationTime; // Assume we can buildup at normal consumption rate
+        totalSupplyFromBuildup += product.stock + inventoryBuildup;
+
+        if ((product.stock + inventoryBuildup) < (peakDailyDemand * duration)) {
+            productsAtRisk.push(product.id);
+        }
+    }
+
+    const stockoutRisk = totalSupplyFromBuildup < totalProjectedDemand 
+        ? ((totalProjectedDemand - totalSupplyFromBuildup) / totalProjectedDemand) * 100 
+        : 0;
+    
+    // Extra operational cost for scaling
+    const extraCost = (duration / 30) * 50000 * (increasePercentage / 100);
+    
+    return {
+        summary: {
+            scenario: "Peak Season",
+            description: `Simulated a ${increasePercentage}% demand increase over ${duration} days with ${preparationTime} days to prepare.`,
+        },
+        impact: {
+            cost: { change: extraCost, percentage: "~20-50%" },
+            sla: { total_delay_minutes: stockoutRisk > 10 ? 120 : 0, affected_routes: stockoutRisk > 10 ? 25 : 0 },
+            carbon: { change_kg: extraCost * 0.08, percentage: "~5-10%" },
+            inventory: { stockout_risk_percentage: stockoutRisk, affected_products: productsAtRisk }
+        },
+        recommendations: [{
+            priority: 'Medium',
+            message: `Begin inventory buildup ${preparationTime} days in advance and scale warehouse staff by ${increasePercentage/2}%.`
+        }],
+        details: { affectedRoutes: [], reroutedPaths: [] }
+    };
+}
+
+export async function runSimulation(params: SimulationParams): Promise<SimulationReport> {
+  switch (params.scenario) {
+    case 'weather_event':
+      return runWeatherEvent(params.parameters);
+    case 'demand_spike':
+      return runDemandSpike(params.parameters);
+    case 'supplier_outage':
+      return runSupplierOutage(params.parameters);
+    case 'peak_season':
+        return runPeakSeason(params.parameters);
+    default:
+      // This should be impossible with TypeScript discriminated unions
+      throw new Error("Invalid simulation scenario");
   }
-} 
+}
+
+export type { SimulationParams }; 
