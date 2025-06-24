@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Play, Pause, RotateCcw, Zap, Cloud, Package, TrendingUp, AlertTriangle } from 'lucide-react';
 import { apiService } from '../services/api';
@@ -9,6 +9,7 @@ const DigitalTwin: React.FC = () => {
   const [selectedScenario, setSelectedScenario] = useState<'demand_spike' | 'weather_event' | 'supplier_outage' | 'peak_season'>('demand_spike');
   const [simulationResult, setSimulationResult] = useState<SimulationReport | null>(null);
   const [simulationError, setSimulationError] = useState<string | null>(null);
+  const [parameters, setParameters] = useState<any>({});
 
   const scenarios = [
     {
@@ -18,10 +19,10 @@ const DigitalTwin: React.FC = () => {
       icon: TrendingUp,
       color: 'from-blue-500 to-blue-600',
       parameters: {
-        magnitude: 150,
-        duration: 7,
-        category: 'Electronics',
-        region: 'Northeast'
+        increasePercentage: { min: 10, max: 200, default: 50, unit: '%' },
+        duration: { min: 1, max: 30, default: 7, unit: ' days' },
+        productCategory: { options: ['Electronics', 'Apparel', 'Groceries', 'Home Goods'], default: 'Electronics' },
+        region: { options: ['Northeast', 'South', 'West', 'Midwest'], default: 'Northeast' }
       }
     },
     {
@@ -31,10 +32,9 @@ const DigitalTwin: React.FC = () => {
       icon: Cloud,
       color: 'from-gray-500 to-gray-600',
       parameters: {
-        severity: 8,
-        duration: 3,
-        type: 'Storm',
-        affected_routes: 12
+        eventType: { options: ['flood', 'storm', 'fog'], default: 'flood' },
+        city: { options: ['Mumbai', 'Chennai', 'Kolkata', 'Delhi'], default: 'Mumbai' },
+        severity: { options: ['low', 'medium', 'high'], default: 'high' }
       }
     },
     {
@@ -44,10 +44,9 @@ const DigitalTwin: React.FC = () => {
       icon: Package,
       color: 'from-red-500 to-red-600',
       parameters: {
-        supplier: 'Supplier-A',
-        duration: 14,
-        impact_percentage: 35,
-        alternative_sources: 3
+        supplierId: { options: [1, 2, 3], default: 1 },
+        impactPercentage: { min: 10, max: 100, default: 40, unit: '%' },
+        duration: { min: 1, max: 60, default: 14, unit: ' days' }
       }
     },
     {
@@ -56,11 +55,10 @@ const DigitalTwin: React.FC = () => {
       description: 'Optimize for holiday demand',
       icon: Zap,
       color: 'from-green-500 to-green-600',
-      parameters: {
-        season: 'Holiday',
-        demand_multiplier: 2.4,
-        duration: 30,
-        preparation_time: 45
+       parameters: {
+        increasePercentage: { min: 50, max: 300, default: 120, unit: '%' },
+        duration: { min: 15, max: 90, default: 45, unit: ' days' },
+        preparationTime: { min: 15, max: 120, default: 60, unit: ' days' }
       }
     }
   ];
@@ -111,21 +109,34 @@ const DigitalTwin: React.FC = () => {
   const currentScenario = scenarios.find(s => s.id === selectedScenario)!;
   const currentResults = simulationResult ? null : simulationResults[selectedScenario];
 
+  // Effect to initialize parameters when scenario changes
+  useEffect(() => {
+    if (currentScenario) {
+      const defaultParams = Object.fromEntries(
+        Object.entries(currentScenario.parameters).map(([key, config]: [string, any]) => [key, config.default])
+      );
+      setParameters(defaultParams);
+      setSimulationResult(null); // Reset results when scenario changes
+      setSimulationError(null);
+    }
+  }, [selectedScenario]);
+
+  const handleParameterChange = (key: string, value: any) => {
+    setParameters(prev => ({ ...prev, [key]: value }));
+  };
+
   const handleSimulation = async () => {
     setIsSimulating(true);
     setSimulationError(null);
     setSimulationResult(null);
 
     try {
-      const scenarioMap = {
-        demand_spike: { scenario: 'demand_spike', parameters: { severity: 'medium', increasePercentage: 50, productId: 101 } },
-        weather_event: { scenario: 'weather_event', parameters: { severity: 'high', city: 'Mumbai', eventType: 'flood' } },
-        supplier_outage: { scenario: 'supplier_outage', parameters: { severity: 'high', supplierId: 1 } },
-        peak_season: { scenario: 'demand_spike', parameters: { severity: 'high', increasePercentage: 120 } }
-      };
-
-      const { scenario, parameters } = scenarioMap[selectedScenario];
-      const result = await apiService.runSimulation(scenario, parameters) as SimulationReport;
+      let scenarioToRun: 'demand_spike' | 'weather_event' | 'supplier_outage' = selectedScenario as any;
+      if (selectedScenario === 'peak_season') {
+        scenarioToRun = 'demand_spike';
+      }
+      
+      const result = await apiService.runSimulation(scenarioToRun, parameters) as SimulationReport;
       setSimulationResult(result);
 
     } catch (error) {
@@ -222,32 +233,44 @@ const DigitalTwin: React.FC = () => {
         >
           <h3 className="text-xl font-semibold text-white mb-6">Scenario Parameters</h3>
           <div className="space-y-4">
-            {Object.entries(currentScenario.parameters).map(([key, value]) => (
-              <div key={key}>
-                <label className="block text-sm text-gray-400 mb-2 capitalize">
-                  {key.replace('_', ' ')}
-                </label>
-                {typeof value === 'number' ? (
-                  <input
-                    type="range"
-                    min={0}
-                    max={typeof value === 'number' && key.includes('percentage') ? 100 : value * 2}
-                    value={value}
-                    onChange={() => {}} // Read-only for demo
-                    className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
-                  />
-                ) : (
-                  <select 
-                    value={value}
-                    onChange={() => {}} // Read-only for demo
-                    className="w-full bg-gray-700 border border-gray-600 text-white px-3 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value={value}>{value}</option>
-                  </select>
-                )}
-                <div className="text-sm text-gray-300 mt-1">{value}</div>
-              </div>
-            ))}
+            {Object.entries(currentScenario.parameters).map(([key, config]: [string, any]) => {
+              const label = key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ');
+
+              if (config.options) {
+                return (
+                  <div key={key}>
+                    <label className="block text-sm text-gray-400 mb-2 capitalize">{label}</label>
+                    <select
+                      value={parameters[key]}
+                      onChange={(e) => handleParameterChange(key, e.target.value)}
+                      className="w-full bg-gray-700 border border-gray-600 text-white px-3 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      {config.options.map((option: any) => (
+                        <option key={option} value={option}>{option}</option>
+                      ))}
+                    </select>
+                  </div>
+                );
+              }
+
+              if (typeof config.min !== 'undefined' && typeof config.max !== 'undefined') {
+                return (
+                  <div key={key}>
+                    <label className="block text-sm text-gray-400 mb-2 capitalize">{label}</label>
+                    <input
+                      type="range"
+                      min={config.min}
+                      max={config.max}
+                      value={parameters[key] || config.default}
+                      onChange={(e) => handleParameterChange(key, parseInt(e.target.value))}
+                      className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
+                    />
+                    <div className="text-sm text-gray-300 mt-1">{parameters[key] || config.default}{config.unit}</div>
+                  </div>
+                );
+              }
+              return null;
+            })}
           </div>
 
           {isSimulating && (

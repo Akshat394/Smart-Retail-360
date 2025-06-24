@@ -22,7 +22,7 @@ import {
   type InsertEvent
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, sql, and } from "drizzle-orm";
+import { eq, desc, sql, and, inArray } from "drizzle-orm";
 import * as bcrypt from "bcrypt";
 import { randomBytes } from "crypto";
 import { INDIAN_CITY_GRAPH, INDIAN_CITIES } from './demo-data';
@@ -53,6 +53,7 @@ export interface IStorage {
   
   // Existing methods
   getAllInventory(): Promise<Inventory[]>;
+  getInventoryForProducts(productIds: number[]): Promise<Inventory[]>;
   insertInventory(inventory: InsertInventory): Promise<Inventory>;
   getLatestMetrics(): Promise<SystemMetrics | undefined>;
   insertMetrics(metrics: InsertSystemMetrics): Promise<SystemMetrics>;
@@ -243,6 +244,13 @@ export class DatabaseStorage implements IStorage {
 
   async getAllInventory(): Promise<Inventory[]> {
     return await db.select().from(inventory).orderBy(desc(inventory.lastUpdated));
+  }
+
+  async getInventoryForProducts(productIds: number[]): Promise<Inventory[]> {
+    if (productIds.length === 0) {
+      return [];
+    }
+    return await db.select().from(inventory).where(inArray(inventory.id, productIds));
   }
 
   async insertInventory(insertInventory: InsertInventory): Promise<Inventory> {

@@ -1,7 +1,7 @@
 import { storage } from "./storage";
 import { dijkstraShortestPath } from './storage';
 import { INDIAN_CITY_GRAPH, INDIAN_CITIES } from './demo-data';
-import type { Route, SimulationParams, SimulationReport } from "@shared/schema";
+import type { Route, SimulationParams, SimulationReport, WeatherEventParams, DemandSpikeParams, SupplierOutageParams } from "@shared/schema";
 
 // Define realistic impact factors for various simulation scenarios.
 // These values help translate qualitative severity into quantitative impact.
@@ -35,6 +35,23 @@ function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
   return R * c; // Distance in km
 }
 
+// Mock data for relationships not yet in the DB schema.
+// This allows for more realistic simulations.
+const MOCK_INVENTORY_DATA = {
+  // productId: { daily_consumption, supplierId }
+  101: { daily_consumption: 20, supplierId: 1 },
+  102: { daily_consumption: 30, supplierId: 1 },
+  105: { daily_consumption: 15, supplierId: 2 },
+  201: { daily_consumption: 50, supplierId: 2 },
+  202: { daily_consumption: 25, supplierId: 3 },
+};
+
+const MOCK_SUPPLIER_DATA = {
+  1: { name: 'Supplier Alpha', backupSupplierId: 2 },
+  2: { name: 'Supplier Beta', backupSupplierId: 3 },
+  3: { name: 'Supplier Gamma', backupSupplierId: 1 },
+};
+
 export class SimulationEngine {
   constructor() {
     // In the future, we could inject dependencies like a logger here.
@@ -43,28 +60,28 @@ export class SimulationEngine {
   public async run(params: SimulationParams): Promise<SimulationReport> {
     switch (params.scenario) {
       case 'weather_event':
-        return this.runWeatherEvent(params.parameters);
+        return this.runWeatherEvent(params);
       case 'demand_spike':
-        return this.runDemandSpike(params.parameters);
+        return this.runDemandSpike(params);
       case 'supplier_outage':
-        return this.runSupplierOutage(params.parameters);
+        return this.runSupplierOutage(params);
       default:
-        throw new Error('Invalid simulation scenario');
+        // This case should ideally be unreachable due to TypeScript's discriminated union
+        const _exhaustiveCheck: never = params;
+        throw new Error(`Invalid simulation scenario: ${(_exhaustiveCheck as any)?.scenario}`);
     }
   }
 
-  private async runWeatherEvent(parameters: SimulationParams['parameters']): Promise<SimulationReport> {
+  private async runWeatherEvent(params: WeatherEventParams): Promise<SimulationReport> {
+    const { city, eventType, severity } = params.parameters;
+    
     // Fetch all active routes
     const allRoutes = await storage.getAllRoutes();
     const activeRoutes = allRoutes.filter(r => r.status === 'active' && r.destination && r.coordinates);
-
-    if (!parameters.city || !parameters.eventType) {
-      throw new Error("City and event type are required for weather event simulation.");
-    }
     
-    const eventCity = INDIAN_CITIES.find(c => c.name.toLowerCase() === parameters.city!.toLowerCase());
+    const eventCity = INDIAN_CITIES.find(c => c.name.toLowerCase() === city.toLowerCase());
     if (!eventCity) {
-      throw new Error(`City '${parameters.city}' not found in the list of Indian cities.`);
+      throw new Error(`City '${city}' not found in the list of Indian cities.`);
     }
 
     // Identify affected routes (within 100km of the event city)
@@ -80,12 +97,12 @@ export class SimulationEngine {
 
     // Simulate disruption and re-optimize
     const modifiedGraph = JSON.parse(JSON.stringify(INDIAN_CITY_GRAPH)); // Deep copy
-    const impactFactor = IMPACT_FACTORS.weather[parameters.eventType][parameters.severity];
+    const impactFactor = IMPACT_FACTORS.weather[eventType][severity];
 
-    for (const city in modifiedGraph) {
-      if (city.toLowerCase() === parameters.city.toLowerCase()) {
-        for (const connection of modifiedGraph[city]) {
-          if (parameters.eventType === 'flood') {
+    for (const cityNode in modifiedGraph) {
+      if (cityNode.toLowerCase() === city.toLowerCase()) {
+        for (const connection of modifiedGraph[cityNode]) {
+          if (eventType === 'flood') {
             // Remove a percentage of connections for floods
             if (Math.random() < impactFactor) {
               connection.distance = Infinity;
@@ -149,7 +166,7 @@ export class SimulationEngine {
     return {
       summary: {
         scenario: 'Weather Event',
-        description: `Simulation of a ${parameters.severity} ${parameters.eventType} in ${parameters.city}.`,
+        description: `Simulation of a ${severity} ${eventType} in ${city}.`,
       },
       impact: {
         cost: {
@@ -178,18 +195,128 @@ export class SimulationEngine {
     };
   }
 
-  private async runDemandSpike(parameters: SimulationParams['parameters']): Promise<SimulationReport> {
-    console.log("Running Demand Spike Simulation with params:", parameters);
-    // Future implementation will model inventory depletion rates, warehouse capacity,
-    // and recommend inventory transfers or expedited shipments.
-    return this.generateMockReport('Demand Spike');
+  private async runDemandSpike(params: DemandSpikeParams): Promise<SimulationReport> {
+    const { increasePercentage, duration, productCategory, region } = params.parameters;
+
+    // 1. Fetch relevant inventory. For this demo, we'll use mock data.
+    const relevantProductIds = Object.keys(MOCK_INVENTORY_DATA).map(Number);
+    const inventory = await storage.getInventoryForProducts(relevantProductIds);
+
+    // 2. Calculate simulated demand and project inventory levels.
+    let totalStockoutDays = 0;
+    let productsAtRisk: number[] = [];
+
+    for (const item of inventory) {
+      const mockData = MOCK_INVENTORY_DATA[item.id as keyof typeof MOCK_INVENTORY_DATA];
+      if (!mockData) continue;
+
+      const baseDemand = mockData.daily_consumption;
+      const simulatedDemand = baseDemand * (1 + increasePercentage / 100);
+      
+      const daysUntilStockout = item.quantity / simulatedDemand;
+      if (daysUntilStockout < duration) {
+        totalStockoutDays += (duration - daysUntilStockout);
+        productsAtRisk.push(item.id);
+      }
+    }
+    
+    const stockoutRiskPercentage = (totalStockoutDays / (inventory.length * duration)) * 100;
+
+    // 3. Generate recommendations
+    const recommendations: SimulationReport['recommendations'] = [];
+    if (stockoutRiskPercentage > 20) {
+      recommendations.push({
+        priority: 'High',
+        message: `High stockout risk of ${stockoutRiskPercentage.toFixed(1)}%. Recommend pre-positioning stock in the ${region} region.`
+      });
+      recommendations.push({
+        priority: 'Medium',
+        message: 'Consider activating backup suppliers for at-risk products.'
+      });
+    } else {
+      recommendations.push({
+        priority: 'Low',
+        message: 'Monitor inventory levels closely and prepare for increased fulfillment activity.'
+      });
+    }
+
+    return {
+      summary: {
+        scenario: 'Demand Spike',
+        description: `Simulation of a ${increasePercentage}% demand increase for ${duration} days in the ${region} region.`,
+      },
+      impact: {
+        cost: { change: stockoutRiskPercentage * 2000, percentage: `+${(stockoutRiskPercentage * 0.5).toFixed(1)}%` },
+        sla: { total_delay_minutes: 0, affected_routes: 0 },
+        carbon: { change_kg: 0, percentage: '+0%' },
+        inventory: { stockout_risk_percentage: stockoutRiskPercentage, affected_products: productsAtRisk },
+      },
+      recommendations,
+      details: { affectedRoutes: [], reroutedPaths: [] },
+    };
   }
 
-  private async runSupplierOutage(parameters: SimulationParams['parameters']): Promise<SimulationReport> {
-    console.log("Running Supplier Outage Simulation with params:", parameters);
-    // Future implementation will model the impact on the supply chain,
-    // calculate stockout risks for dependent products, and suggest alternative suppliers.
-    return this.generateMockReport('Supplier Outage');
+  private async runSupplierOutage(params: SupplierOutageParams): Promise<SimulationReport> {
+    const { supplierId, impactPercentage, duration } = params.parameters;
+
+    // 1. Identify affected products
+    const affectedProductIds = Object.entries(MOCK_INVENTORY_DATA)
+      .filter(([, data]) => data.supplierId === supplierId)
+      .map(([id]) => Number(id));
+
+    const inventory = await storage.getInventoryForProducts(affectedProductIds);
+
+    // 2. Simulate supply reduction and project stock levels
+    let totalStockoutDays = 0;
+    
+    for (const item of inventory) {
+      const mockData = MOCK_INVENTORY_DATA[item.id as keyof typeof MOCK_INVENTORY_DATA];
+      const baseDemand = mockData.daily_consumption;
+      // Incoming supply is assumed to match demand, so we simulate a reduction
+      const incomingSupply = baseDemand * (1 - impactPercentage / 100);
+      const dailyNetChange = incomingSupply - baseDemand;
+
+      let currentQuantity = item.quantity;
+      for (let day = 1; day <= duration; day++) {
+        currentQuantity += dailyNetChange;
+        if (currentQuantity <= 0) {
+          totalStockoutDays += (duration - day + 1);
+          break; // Stop counting for this item once it stocks out
+        }
+      }
+    }
+
+    const stockoutRiskPercentage = (totalStockoutDays / (inventory.length * duration)) * 100;
+
+    // 3. Generate recommendations
+    const backupSupplier = MOCK_SUPPLIER_DATA[supplierId as keyof typeof MOCK_SUPPLIER_DATA]?.backupSupplierId;
+    const recommendations: SimulationReport['recommendations'] = [];
+    if (stockoutRiskPercentage > 30) {
+      recommendations.push({
+        priority: 'High',
+        message: `Critical stockout risk of ${stockoutRiskPercentage.toFixed(1)}%. Immediately engage backup supplier (ID: ${backupSupplier}).`
+      });
+    } else {
+       recommendations.push({
+        priority: 'Medium',
+        message: `Moderate stockout risk detected. Begin sourcing negotiations with backup supplier (ID: ${backupSupplier}).`
+      });
+    }
+
+     return {
+      summary: {
+        scenario: 'Supplier Outage',
+        description: `Simulation of a ${impactPercentage}% supply reduction from Supplier ${supplierId} for ${duration} days.`,
+      },
+      impact: {
+        cost: { change: stockoutRiskPercentage * 3000, percentage: `+${(stockoutRiskPercentage * 0.7).toFixed(1)}%` },
+        sla: { total_delay_minutes: 0, affected_routes: 0 },
+        carbon: { change_kg: 0, percentage: '+0%' },
+        inventory: { stockout_risk_percentage: stockoutRiskPercentage, affected_products: affectedProductIds },
+      },
+      recommendations,
+      details: { affectedRoutes: [], reroutedPaths: [] },
+    };
   }
   
   private generateMockReport(scenario: string): SimulationReport {

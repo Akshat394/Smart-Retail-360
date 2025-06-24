@@ -154,19 +154,38 @@ export type UserSession = typeof userSessions.$inferSelect;
 export type IndianCity = { name: string; lat: number; lng: number };
 
 // Types for Digital Twin Simulation
-export type SimulationParams = {
-  scenario: 'weather_event' | 'demand_spike' | 'supplier_outage';
+
+// Define parameter structures for each specific scenario
+export type WeatherEventParams = {
+  scenario: 'weather_event';
   parameters: {
-    // Common parameters
+    eventType: 'flood' | 'storm' | 'fog';
+    city: 'Mumbai' | 'Chennai' | 'Kolkata' | 'Delhi';
     severity: 'low' | 'medium' | 'high';
-    // Scenario-specific parameters
-    city?: string;
-    eventType?: 'flood' | 'storm' | 'fog';
-    productId?: number;
-    increasePercentage?: number;
-    supplierId?: number;
   };
 };
+
+export type DemandSpikeParams = {
+  scenario: 'demand_spike';
+  parameters: {
+    increasePercentage: number;
+    duration: number;
+    productCategory: 'Electronics' | 'Apparel' | 'Groceries' | 'Home Goods';
+    region: 'Northeast' | 'South' | 'West' | 'Midwest';
+  };
+};
+
+export type SupplierOutageParams = {
+  scenario: 'supplier_outage';
+  parameters: {
+    supplierId: number;
+    impactPercentage: number;
+    duration: number;
+  };
+};
+
+// Create a discriminated union of all possible simulation parameter types
+export type SimulationParams = WeatherEventParams | DemandSpikeParams | SupplierOutageParams;
 
 export type SimulationReport = {
   summary: {
