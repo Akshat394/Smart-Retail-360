@@ -97,10 +97,16 @@ export const loginUserSchema = z.object({
   password: z.string().min(6),
 });
 
-export const insertDriverSchema = createInsertSchema(drivers).omit({
+export const insertDriverSchema = createInsertSchema(drivers, {
+  location: z.object({ lat: z.number(), lng: z.number() }).nullable(),
+}).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
+});
+
+export const selectDriverSchema = createSelectSchema(drivers, {
+  location: z.object({ lat: z.number(), lng: z.number() }).nullable(),
 });
 
 export const selectRouteSchema = createSelectSchema(routes);
@@ -134,7 +140,7 @@ export type InsertUser = z.infer<typeof insertUserSchema>;
 export type LoginUser = z.infer<typeof loginUserSchema>;
 export type User = typeof users.$inferSelect;
 export type InsertDriver = z.infer<typeof insertDriverSchema>;
-export type Driver = typeof drivers.$inferSelect;
+export type Driver = z.infer<typeof selectDriverSchema>;
 export type InsertRoute = z.infer<typeof insertRouteSchema>;
 export type Route = typeof routes.$inferSelect;
 export type InsertInventory = z.infer<typeof insertInventorySchema>;
