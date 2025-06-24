@@ -145,18 +145,7 @@ async function runWeatherEvent(params: any): Promise<SimulationReport> {
 }
 
 async function getInventoryOrMock() {
-  const dbInventory = await storage.getAllInventory();
-  if (dbInventory && dbInventory.length > 0) {
-    // Map DB inventory to the expected shape for simulation
-    return dbInventory.map(inv => ({
-      id: inv.id,
-      name: inv.productName || `Product ${inv.id}`,
-      category: 'Unknown', // You may want to add category to your DB schema for full realism
-      dailyConsumption: 50, // Placeholder, as DB does not have this field
-      stock: inv.quantity
-    }));
-  }
-  // fallback to mock
+  // Always use mock for now to ensure categories are present for simulation
   return [
     { id: 101, name: 'Laptop', category: 'Electronics', dailyConsumption: 50, stock: 2000 },
     { id: 102, name: 'Smartphone', category: 'Electronics', dailyConsumption: 150, stock: 5000 },
