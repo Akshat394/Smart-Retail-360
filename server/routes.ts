@@ -5,9 +5,34 @@ import { storage } from "./storage";
 import { pool } from "./db";
 import { startDemoDataGenerator } from "./demo-data";
 import { authenticate, authorize, ROLES, type AuthenticatedRequest } from "./auth";
-import { loginUserSchema, insertUserSchema, insertDriverSchema, insertRouteSchema } from "@shared/schema";
+import { loginUserSchema, insertUserSchema, insertDriverSchema, insertRouteSchema, type IndianCity } from "@shared/schema";
 import { dijkstraShortestPath } from './storage';
 import { INDIAN_CITY_GRAPH, INDIAN_CITIES } from './demo-data';
+
+// Helper: city-based alert type inference
+function inferCityAlertType(city: string | undefined) {
+  if (!city) return 'traffic_jam';
+  const cityName = city.toLowerCase();
+  if (["mumbai", "chennai", "kolkata"].includes(cityName)) {
+    // Monsoon/flood prone
+    if (Math.random() < 0.4) return 'flood';
+    if (Math.random() < 0.7) return 'weather';
+  }
+  if (["bangalore", "hyderabad", "pune"].includes(cityName)) {
+    if (Math.random() < 0.5) return 'construction';
+  }
+  if (["delhi", "new delhi", "ghaziabad"].includes(cityName)) {
+    if (Math.random() < 0.5) return 'fog';
+  }
+  if (["kolkata", "jaipur", "lucknow"].includes(cityName)) {
+    if (Math.random() < 0.3) return 'event';
+  }
+  if (["mumbai", "bangalore", "delhi", "chennai", "hyderabad"].includes(cityName)) {
+    if (Math.random() < 0.6) return 'traffic_jam';
+  }
+  // Default
+  return Math.random() < 0.2 ? 'police' : 'traffic_jam';
+}
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Public authentication routes
@@ -313,33 +338,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const allRoutes = await storage.getAllRoutes();
       const allDrivers = await storage.getAllDrivers();
       const alerts = [];
-      // Example: Delayed route alert
+      const now = new Date();
+
+      // Route-based alerts
       for (const route of allRoutes) {
         if (route.status === 'active' && route.estimatedTime && route.updatedAt) {
-          const now = new Date();
           const updated = new Date(route.updatedAt);
           // If route has been active longer than estimated time, trigger delay alert
           if ((now.getTime() - updated.getTime()) / 60000 > route.estimatedTime) {
+            // Infer alert type by city
+            const alertType = inferCityAlertType(route.destination);
+            let impact = 'Delay';
+            let delay = `${((now.getTime() - updated.getTime()) / 60000 - route.estimatedTime).toFixed(1)} min`;
+            if (alertType === 'flood') { impact = 'Flooded road'; delay = '30+ min'; }
+            if (alertType === 'weather') { impact = 'Heavy rain'; delay = '20+ min'; }
+            if (alertType === 'fog') { impact = 'Low visibility'; delay = '10+ min'; }
+            if (alertType === 'event') { impact = 'Event/Parade'; delay = '15+ min'; }
+            if (alertType === 'construction') { impact = 'Roadwork'; delay = '15+ min'; }
+            if (alertType === 'traffic_jam') { impact = 'Heavy traffic'; delay = '10+ min'; }
+            if (alertType === 'police') { impact = 'Police checkpoint'; delay = '5+ min'; }
             alerts.push({
               id: `delay-${route.routeId}`,
-              type: 'accident',
+              type: alertType,
               location: route.coordinates,
-              impact: 'Delay',
-              delay: `${((now.getTime() - updated.getTime()) / 60000 - route.estimatedTime).toFixed(1)} min`,
+              impact,
+              delay,
               affectedRoutes: [route.routeId]
             });
           }
         }
       }
-      // Example: Anomaly alert for drivers with status not 'available' or 'assigned'
+      // Driver-based alerts
       for (const driver of allDrivers) {
         if (driver.status !== 'available' && driver.status !== 'assigned' && driver.location) {
+          // Infer alert type by city (if possible)
+          let city = null;
+          // Try to find the city name by matching coordinates (roughly)
+          for (const c of INDIAN_CITIES) {
+            if (Math.abs(c.lat - driver.location.lat) < 0.2 && Math.abs(c.lng - driver.location.lng) < 0.2) {
+              city = c.name;
+              break;
+            }
+          }
+          const alertType = city ? inferCityAlertType(city) : 'breakdown';
+          let impact = 'Driver anomaly';
+          let delay = 'N/A';
+          if (alertType === 'breakdown') { impact = 'Vehicle breakdown'; delay = 'Unknown'; }
+          if (alertType === 'flood') { impact = 'Flooded road'; delay = '30+ min'; }
+          if (alertType === 'weather') { impact = 'Severe weather'; delay = '20+ min'; }
+          if (alertType === 'fog') { impact = 'Low visibility'; delay = '10+ min'; }
+          if (alertType === 'event') { impact = 'Event/Parade'; delay = '15+ min'; }
+          if (alertType === 'construction') { impact = 'Roadwork'; delay = '15+ min'; }
+          if (alertType === 'traffic_jam') { impact = 'Heavy traffic'; delay = '10+ min'; }
+          if (alertType === 'police') { impact = 'Police checkpoint'; delay = '5+ min'; }
           alerts.push({
             id: `anomaly-${driver.id}`,
-            type: 'construction',
+            type: alertType,
             location: driver.location,
-            impact: 'Driver anomaly',
-            delay: 'N/A',
+            impact,
+            delay,
             affectedRoutes: allRoutes.filter(r => r.driverId === driver.id).map(r => r.routeId)
           });
         }

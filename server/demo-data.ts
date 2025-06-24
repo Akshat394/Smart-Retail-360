@@ -1,10 +1,10 @@
 import { storage } from "./storage";
 import { db } from './db';
-import { routes } from '../shared/schema';
+import { routes, type IndianCity } from '../shared/schema';
 import { eq } from "drizzle-orm";
 
 // List of real Indian cities with coordinates
-export const INDIAN_CITIES = [
+export const INDIAN_CITIES: ReadonlyArray<IndianCity> = [
   { name: 'Mumbai', lat: 19.0760, lng: 72.8777 },
   { name: 'Bangalore', lat: 12.9716, lng: 77.5946 },
   { name: 'Kolkata', lat: 22.5726, lng: 88.3639 },

@@ -1,5 +1,5 @@
 import { pgTable, text, serial, integer, boolean, timestamp, real, jsonb, varchar } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
+import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
 
 export const users = pgTable("users", {
@@ -103,10 +103,16 @@ export const insertDriverSchema = createInsertSchema(drivers).omit({
   updatedAt: true,
 });
 
-export const insertRouteSchema = createInsertSchema(routes).omit({
+export const selectRouteSchema = createSelectSchema(routes);
+export const insertRouteSchema = createInsertSchema(routes, {
+  coordinates: z.object({
+    lat: z.number(),
+    lng: z.number()
+  })
+}).omit({
   id: true,
   createdAt: true,
-  updatedAt: true,
+  updatedAt: true
 });
 
 export const insertInventorySchema = createInsertSchema(inventory).omit({
@@ -138,3 +144,5 @@ export type SystemMetrics = typeof systemMetrics.$inferSelect;
 export type InsertEvent = z.infer<typeof insertEventSchema>;
 export type Event = typeof events.$inferSelect;
 export type UserSession = typeof userSessions.$inferSelect;
+
+export type IndianCity = { name: string; lat: number; lng: number };
