@@ -126,6 +126,20 @@ class ApiService {
   async getAnomalies() {
     return this.request('/anomalies');
   }
+
+  async getMLPrediction(data: number[], params: any = {}) {
+    return this.request('/ml-predict', {
+      method: 'POST',
+      body: JSON.stringify({ data, params }),
+    });
+  }
+
+  async getMLExplanation(data: number[], params: any = {}) {
+    return this.request('/ml-explain', {
+      method: 'POST',
+      body: JSON.stringify({ data, params }),
+    });
+  }
 }
 
 export const apiService = new ApiService();

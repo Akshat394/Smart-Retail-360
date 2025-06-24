@@ -2,10 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, ScatterChart, Scatter } from 'recharts';
 import { TrendingUp, Brain, Target, AlertTriangle, Activity, Zap } from 'lucide-react';
+import { apiService } from '../services/api';
 
 const Analytics: React.FC = () => {
   const [selectedModel, setSelectedModel] = useState<'arima' | 'lstm' | 'ensemble'>('ensemble');
   const [forecastHorizon, setForecastHorizon] = useState<7 | 14 | 30>(14);
+  const [anomalies, setAnomalies] = useState<any[]>([]);
+  // ML demo state
+  const [mlInput, setMLInput] = useState('');
+  const [mlPrediction, setMLPrediction] = useState<any>(null);
+  const [mlExplanation, setMLExplanation] = useState<any>(null);
+  const [mlError, setMLError] = useState<string | null>(null);
 
   const forecastData = [
     { date: '2024-01-01', actual: 1200, arima: 1180, lstm: 1220, ensemble: 1195, confidence: 95 },
@@ -52,6 +59,30 @@ const Analytics: React.FC = () => {
       case 'lstm': return '#8B5CF6';
       case 'ensemble': return '#10B981';
       default: return '#3B82F6';
+    }
+  };
+
+  const handleMLPredict = async () => {
+    setMLError(null);
+    setMLPrediction(null);
+    try {
+      const nums = mlInput.split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n));
+      const result = await apiService.getMLPrediction(nums);
+      setMLPrediction(result);
+    } catch (e: any) {
+      setMLError(e.message || 'Prediction error');
+    }
+  };
+
+  const handleMLExplain = async () => {
+    setMLError(null);
+    setMLExplanation(null);
+    try {
+      const nums = mlInput.split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n));
+      const result = await apiService.getMLExplanation(nums);
+      setMLExplanation(result);
+    } catch (e: any) {
+      setMLError(e.message || 'Explanation error');
     }
   };
 
@@ -320,6 +351,40 @@ const Analytics: React.FC = () => {
             </BarChart>
           </ResponsiveContainer>
         </div>
+      </motion.div>
+
+      {/* ML Demo Panel */}
+      <motion.div
+        className="bg-gray-800 rounded-xl p-6 border border-blue-700 mt-8"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.8 }}
+      >
+        <h3 className="text-xl font-semibold text-blue-400 mb-4">ML Model Demo</h3>
+        <div className="flex flex-col md:flex-row items-center gap-4 mb-4">
+          <input
+            type="text"
+            value={mlInput}
+            onChange={e => setMLInput(e.target.value)}
+            placeholder="Enter numbers, e.g. 1,2,3"
+            className="bg-gray-700 border border-gray-600 text-white px-3 py-2 rounded-lg w-full md:w-1/2"
+          />
+          <button
+            onClick={handleMLPredict}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold"
+          >Predict</button>
+          <button
+            onClick={handleMLExplain}
+            className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold"
+          >Explain</button>
+        </div>
+        {mlError && <div className="text-red-400 mb-2">{mlError}</div>}
+        {mlPrediction && (
+          <div className="text-blue-300 mb-2">Prediction: {JSON.stringify(mlPrediction.predictions)}</div>
+        )}
+        {mlExplanation && (
+          <div className="text-green-300 mb-2">Feature Importance: {JSON.stringify(mlExplanation.feature_importance)}</div>
+        )}
       </motion.div>
     </div>
   );
