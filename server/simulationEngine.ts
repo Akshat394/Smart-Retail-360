@@ -56,6 +56,18 @@ const MOCK_SUPPLIER_DATA = {
   3: { name: 'Supplier Gamma', backupSupplierId: 1 },
 };
 
+// Delivery mode factors
+const DELIVERY_MODE_FACTORS: { [key: string]: { speed: number; costPerKm: number; co2PerKm: number; maxDistance?: number; maxPayload?: number } } = {
+  truck:    { speed: 60, costPerKm: 0.15, co2PerKm: 180 },
+  mini_truck: { speed: 50, costPerKm: 0.12, co2PerKm: 120 },
+  autonomous_vehicle: { speed: 75, costPerKm: 0.10, co2PerKm: 100 },
+  drone:    { speed: 120, costPerKm: 0.30, co2PerKm: 30, maxDistance: 30, maxPayload: 5 },
+};
+
+function getDeliveryModeFactors(mode = 'truck') {
+  return DELIVERY_MODE_FACTORS[mode] || DELIVERY_MODE_FACTORS.truck;
+}
+
 // --- Helper Functions ---
 function cloneGraph(graph: typeof INDIAN_CITY_GRAPH): typeof INDIAN_CITY_GRAPH {
   return JSON.parse(JSON.stringify(graph));
@@ -66,10 +78,11 @@ const FUEL_COST_PER_KM = 0.15; // USD
 const CO2_EMISSION_G_PER_KM = 180;
 const DAILY_OPERATIONAL_COST = 200; // Per vehicle
 
-function calculateRouteMetrics(distance: number) {
-  const durationMinutes = (distance / VEHICLE_SPEED_KMPH) * 60;
-  const fuelCost = distance * FUEL_COST_PER_KM;
-  const co2EmissionKg = (distance * CO2_EMISSION_G_PER_KM) / 1000;
+function calculateRouteMetrics(distance: number, mode: string = 'truck') {
+  const factors = getDeliveryModeFactors(mode);
+  const durationMinutes = (distance / factors.speed) * 60;
+  const fuelCost = distance * factors.costPerKm;
+  const co2EmissionKg = (distance * factors.co2PerKm) / 1000;
   return { durationMinutes, fuelCost, co2EmissionKg };
 }
 
@@ -77,7 +90,7 @@ function calculateRouteMetrics(distance: number) {
 
 async function runWeatherEvent(params: any): Promise<SimulationReport> {
   console.log('[SIM DEBUG] WeatherEvent params:', params);
-  const { city, severity } = params;
+  const { city, severity, deliveryMode = 'truck' } = params;
   const activeRoutes = await storage.getAllRoutes();
   console.log('[SIM DEBUG] Active Routes:', activeRoutes);
   const affectedRoutes = activeRoutes.filter(r => {
@@ -115,14 +128,13 @@ async function runWeatherEvent(params: any): Promise<SimulationReport> {
     const { path, distance } = dijkstraShortestPath(modifiedGraph, origin, destination);
     reroutedPaths.push({ routeId: route.routeId, newPath: path, newDistance: distance });
     totalReroutedDistance += distance;
-    totalReroutedDuration += (distance / VEHICLE_SPEED_KMPH) * 60;
+    totalReroutedDuration += (distance / getDeliveryModeFactors(deliveryMode).speed) * 60;
   }
 
-  const { fuelCost: originalFuelCost, co2EmissionKg: originalCo2 } = calculateRouteMetrics(totalOriginalDistance);
-  const { fuelCost: reroutedFuelCost, co2EmissionKg: reroutedCo2 } = calculateRouteMetrics(totalReroutedDistance);
-
-  const costChange = reroutedFuelCost - originalFuelCost;
-  const co2Change = reroutedCo2 - originalCo2;
+  const origMetrics = calculateRouteMetrics(totalOriginalDistance, deliveryMode);
+  const reroutedMetrics = calculateRouteMetrics(totalReroutedDistance, deliveryMode);
+  const costChange = reroutedMetrics.fuelCost - origMetrics.fuelCost;
+  const co2Change = reroutedMetrics.co2EmissionKg - origMetrics.co2EmissionKg;
   const delayMinutes = totalReroutedDuration - totalOriginalDuration;
   
   return {
@@ -131,9 +143,9 @@ async function runWeatherEvent(params: any): Promise<SimulationReport> {
       description: `Simulated a ${severity} ${params.eventType} in ${city}.`,
     },
     impact: {
-      cost: { change: costChange, percentage: ((costChange / originalFuelCost) * 100).toFixed(2) + '%' },
+      cost: { change: costChange, percentage: ((costChange / origMetrics.fuelCost) * 100).toFixed(2) + '%' },
       sla: { total_delay_minutes: delayMinutes, affected_routes: affectedRoutes.length },
-      carbon: { change_kg: co2Change, percentage: ((co2Change / originalCo2) * 100).toFixed(2) + '%' },
+      carbon: { change_kg: co2Change, percentage: ((co2Change / origMetrics.co2EmissionKg) * 100).toFixed(2) + '%' },
       inventory: { stockout_risk_percentage: 0, affected_products: [] }
     },
     recommendations: [{
@@ -169,7 +181,7 @@ async function getSuppliersOrMock() {
 }
 
 async function runDemandSpike(params: any): Promise<SimulationReport> {
-  const { increasePercentage, duration, productCategory } = params;
+  const { increasePercentage, duration, productCategory, deliveryMode = 'truck' } = params;
   console.log('[SIM DEBUG] DemandSpike params:', params);
   const inventory = await getInventoryOrMock();
   console.log('[SIM DEBUG] Inventory:', inventory);
@@ -193,7 +205,9 @@ async function runDemandSpike(params: any): Promise<SimulationReport> {
 
   const avgStockoutRisk = productsAtRisk.length > 0 ? (stockoutRisk / productsAtRisk.length) * 100 : 0;
   // Estimate cost impact: assume 10% of extra demand requires expedited shipping at 2x cost
-  const expeditedCost = (totalExtraDemand * 0.1) * 5; // Assuming avg product cost of $5
+  const expeditedCost = (totalExtraDemand * 0.1) * getDeliveryModeFactors(deliveryMode).costPerKm * 2;
+  // Carbon impact
+  const carbonChange = expeditedCost * (getDeliveryModeFactors(deliveryMode).co2PerKm / 1000);
 
   return {
     summary: {
@@ -201,9 +215,9 @@ async function runDemandSpike(params: any): Promise<SimulationReport> {
       description: `Simulated a ${increasePercentage}% demand spike for ${productCategory} over ${duration} days.`,
     },
     impact: {
-      cost: { change: expeditedCost, percentage: `~5-10%` }, // Simplified
+      cost: { change: expeditedCost, percentage: `~5-10%` },
       sla: { total_delay_minutes: 0, affected_routes: 0 },
-      carbon: { change_kg: expeditedCost * 0.05, percentage: `~2-4%` }, // Simplified
+      carbon: { change_kg: carbonChange, percentage: `~2-4%` },
       inventory: { stockout_risk_percentage: avgStockoutRisk, affected_products: productsAtRisk }
     },
     recommendations: [{
@@ -215,7 +229,7 @@ async function runDemandSpike(params: any): Promise<SimulationReport> {
 }
 
 async function runSupplierOutage(params: any): Promise<SimulationReport> {
-    const { supplierId, impactPercentage, duration } = params;
+    const { supplierId, impactPercentage, duration, deliveryMode = 'truck' } = params;
     console.log('[SIM DEBUG] SupplierOutage params:', params);
     const suppliers = await getSuppliersOrMock();
     console.log('[SIM DEBUG] Suppliers:', suppliers);
@@ -245,7 +259,7 @@ async function runSupplierOutage(params: any): Promise<SimulationReport> {
                 const productCost = 10; // Avg cost
                 const mainCost = deficitToCover * productCost * mainSupplier.costFactor;
                 const backupCost = deficitToCover * productCost * backupSupplier.costFactor;
-                extraCost += (backupCost - mainCost);
+                extraCost += (backupCost - mainCost) * getDeliveryModeFactors(deliveryMode).costPerKm;
             }
         }
     }
@@ -260,7 +274,7 @@ async function runSupplierOutage(params: any): Promise<SimulationReport> {
         impact: {
             cost: { change: extraCost, percentage: "~15-30%" },
             sla: { total_delay_minutes: 0, affected_routes: 0 },
-            carbon: { change_kg: extraCost * 0.03, percentage: "~1-2%" },
+            carbon: { change_kg: extraCost * (getDeliveryModeFactors(deliveryMode).co2PerKm / 1000), percentage: "~1-2%" },
             inventory: { stockout_risk_percentage: avgStockoutRisk, affected_products: affectedProducts.map(p => p.id) }
         },
         recommendations: [{
@@ -272,53 +286,48 @@ async function runSupplierOutage(params: any): Promise<SimulationReport> {
 }
 
 async function runPeakSeason(params: any): Promise<SimulationReport> {
-    console.log('[SIM DEBUG] PeakSeason params:', params);
-    const { increasePercentage, duration, preparationTime } = params;
-    const inventory = await getInventoryOrMock();
-    console.log('[SIM DEBUG] Inventory:', inventory);
-    let totalProjectedDemand = 0;
-    let totalSupplyFromBuildup = 0;
-    let productsAtRisk: number[] = [];
+  console.log('[SIM DEBUG] PeakSeason params:', params);
+  const { increasePercentage, duration, preparationTime, deliveryMode = 'truck' } = params;
+  const inventory = await getInventoryOrMock();
+  console.log('[SIM DEBUG] Inventory:', inventory);
+  let totalProjectedDemand = 0;
+  let totalSupplyFromBuildup = 0;
+  let productsAtRisk: number[] = [];
 
-    for (const product of inventory) {
-        const normalDailyDemand = product.dailyConsumption;
-        const peakDailyDemand = normalDailyDemand * (1 + increasePercentage / 100);
-        
-        totalProjectedDemand += peakDailyDemand * duration;
-        
-        // Calculate how much extra inventory can be built up
-        const inventoryBuildup = normalDailyDemand * preparationTime; // Assume we can buildup at normal consumption rate
-        totalSupplyFromBuildup += product.stock + inventoryBuildup;
-
-        if ((product.stock + inventoryBuildup) < (peakDailyDemand * duration)) {
-            productsAtRisk.push(product.id);
-        }
+  for (const product of inventory) {
+    const normalDailyDemand = product.dailyConsumption;
+    const peakDailyDemand = normalDailyDemand * (1 + increasePercentage / 100);
+    totalProjectedDemand += peakDailyDemand * duration;
+    // Calculate how much extra inventory can be built up
+    const inventoryBuildup = normalDailyDemand * preparationTime; // Assume we can buildup at normal consumption rate
+    totalSupplyFromBuildup += product.stock + inventoryBuildup;
+    if ((product.stock + inventoryBuildup) < (peakDailyDemand * duration)) {
+      productsAtRisk.push(product.id);
     }
+  }
 
-    const stockoutRisk = totalSupplyFromBuildup < totalProjectedDemand 
-        ? ((totalProjectedDemand - totalSupplyFromBuildup) / totalProjectedDemand) * 100 
-        : 0;
-    
-    // Extra operational cost for scaling
-    const extraCost = (duration / 30) * 50000 * (increasePercentage / 100);
-    
-    return {
-        summary: {
-            scenario: "Peak Season",
-            description: `Simulated a ${increasePercentage}% demand increase over ${duration} days with ${preparationTime} days to prepare.`,
-        },
-        impact: {
-            cost: { change: extraCost, percentage: "~20-50%" },
-            sla: { total_delay_minutes: stockoutRisk > 10 ? 120 : 0, affected_routes: stockoutRisk > 10 ? 25 : 0 },
-            carbon: { change_kg: extraCost * 0.08, percentage: "~5-10%" },
-            inventory: { stockout_risk_percentage: stockoutRisk, affected_products: productsAtRisk }
-        },
-        recommendations: [{
-            priority: 'Medium',
-            message: `Begin inventory buildup ${preparationTime} days in advance and scale warehouse staff by ${increasePercentage/2}%.`
-        }],
-        details: { affectedRoutes: [], reroutedPaths: [] }
-    };
+  const stockoutRisk = totalSupplyFromBuildup < totalProjectedDemand 
+    ? ((totalProjectedDemand - totalSupplyFromBuildup) / totalProjectedDemand) * 100 
+    : 0;
+  // Extra operational cost for scaling
+  const extraCost = (duration / 30) * 50000 * (increasePercentage / 100) * getDeliveryModeFactors(deliveryMode).costPerKm;
+  return {
+    summary: {
+      scenario: "Peak Season",
+      description: `Simulated a ${increasePercentage}% demand increase over ${duration} days with ${preparationTime} days to prepare.`,
+    },
+    impact: {
+      cost: { change: extraCost, percentage: "~20-50%" },
+      sla: { total_delay_minutes: stockoutRisk > 10 ? 120 : 0, affected_routes: stockoutRisk > 10 ? 25 : 0 },
+      carbon: { change_kg: extraCost * (getDeliveryModeFactors(deliveryMode).co2PerKm / 1000), percentage: "~5-10%" },
+      inventory: { stockout_risk_percentage: stockoutRisk, affected_products: productsAtRisk }
+    },
+    recommendations: [{
+      priority: 'Medium',
+      message: `Begin inventory buildup ${preparationTime} days in advance and scale warehouse staff by ${increasePercentage/2}%.`
+    }],
+    details: { affectedRoutes: [], reroutedPaths: [] }
+  };
 }
 
 export async function runSimulation(params: SimulationParams): Promise<SimulationReport> {

@@ -1,7 +1,8 @@
 import { storage } from "./storage.js";
 import { db } from './db.js';
-import { routes, type IndianCity, suppliers } from '../shared/schema';
-import { eq } from "drizzle-orm";
+import { routes, type IndianCity, suppliers, inventory as inventoryTable } from '../shared/schema';
+import { eq, sql } from "drizzle-orm";
+import { faker } from '@faker-js/faker';
 
 // List of real Indian cities with coordinates
 export const INDIAN_CITIES: ReadonlyArray<IndianCity> = [
@@ -141,6 +142,62 @@ export const INDIAN_CITY_GRAPH: Record<string, { to: string; distance: number }[
   // Add more connections as needed
 };
 
+const walmartProductCatalog = {
+  "Grocery & Beverages": {
+    brands: ["Great Value", "Sam's Choice", "Bettergoods", "Clear American", "Oak Leaf"],
+    products: ["Soda", "Chips", "Organic Pasta", "Premium Coffee", "Sparkling Water", "Red Wine"],
+  },
+  "Home & Kitchen": {
+    brands: ["Mainstays", "Better Homes & Gardens", "Hometrends", "Allswell"],
+    products: ["Towel Set", "Lava Lamp", "Cookware", "Bedding", "Storage Bins", "Memory Foam Mattress"],
+  },
+  "Health & Beauty": {
+    brands: ["Equate"],
+    products: ["Lotion", "OTC Meds", "Skincare", "Cosmetics", "Grooming Tools", "Supplements"],
+  },
+  "Electronics": {
+    brands: ["onn."],
+    products: ["4K TV", "Gaming Laptop", "Tablet", "Bluetooth Speaker", "Fitness Tracker"],
+  },
+  "Clothing & Apparel": {
+    brands: ["George", "Time and Tru", "Terra & Sky", "No Boundaries", "Athletic Works", "Joyspun"],
+    products: ["T-Shirt", "Jeans", "Plus-Size Top", "Graphic Tee", "Activewear Shorts", "Pajama Set"],
+  },
+  "Baby & Kids": {
+    brands: ["Parent's Choice", "Wonder Nation"],
+    products: ["Diapers", "Baby Formula", "Kids T-Shirt", "Stroller", "Nursery Furniture"],
+  },
+  "Household Essentials": {
+    brands: ["Great Value"],
+    products: ["Paper Towels", "Cleaning Spray", "Pest Control", "Food Storage Bags"],
+  },
+  "Toys & Games": {
+    brands: ["Adventure Force"],
+    products: ["Action Figure", "Board Game", "Kids Bike", "500-Piece Puzzle", "RC Car"],
+  },
+  "Sports, Fitness & Outdoors": {
+    brands: ["Athletic Works"],
+    products: ["Dumbbells", "Yoga Mat", "Camping Tent", "Fishing Rod", "Basketball"],
+  },
+  "Automotive & Tools": {
+    brands: ["Hyper Tough"],
+    products: ["Motor Oil", "Car Battery", "Wrench Set", "Power Drill", "Tire Repair Kit"],
+  },
+  "Pet Supplies": {
+    brands: ["Ol' Roy", "Special Kitty"],
+    products: ["Dog Food", "Cat Litter", "Pet Shampoo", "Chew Toys", "Cat Tree"],
+  },
+  "Office & School Supplies": {
+    brands: ["Pen+Gear"],
+    products: ["Notebook", "Printer Paper", "Backpack", "Sticky Notes", "Ballpoint Pens"],
+  },
+  "Garden & Outdoor Living": {
+    brands: ["Expert Grill", "Mainstays"],
+    products: ["Patio Chair", "Gardening Tools", "Charcoal Grill", "Flower Pot", "Outdoor String Lights"],
+  },
+};
+type Category = keyof typeof walmartProductCatalog;
+
 // Function to insert demo metrics for testing real-time updates
 export async function insertDemoMetrics() {
   const metrics = {
@@ -162,17 +219,49 @@ export async function insertDemoMetrics() {
   }
 }
 
+// Function to randomly update inventory quantities for real-time simulation
+export async function simulateInventoryChanges() {
+  // Fetch all inventory items
+  const allInventory = await storage.getAllInventory();
+  for (const item of allInventory) {
+    // Randomly decide to simulate a sale, restock, or transfer
+    const action = Math.random();
+    let newQuantity = item.quantity;
+    if (action < 0.6) {
+      // Simulate sale (reduce quantity)
+      newQuantity = Math.max(0, item.quantity - Math.floor(Math.random() * 10));
+    } else if (action < 0.9) {
+      // Simulate restock (increase quantity)
+      newQuantity = item.quantity + Math.floor(Math.random() * 20);
+    } else {
+      // Simulate transfer (randomly increase or decrease)
+      newQuantity = Math.max(0, item.quantity + Math.floor(Math.random() * 15) - 7);
+    }
+    if (newQuantity !== item.quantity) {
+      await db.update(inventoryTable)
+        .set({ quantity: newQuantity, lastUpdated: new Date() })
+        .where(eq(inventoryTable.id, item.id));
+    }
+  }
+  // Notify listeners (WebSocket) of inventory update
+  // Only send a small payload to avoid exceeding NOTIFY size limit
+  const notificationPayload = JSON.stringify({ type: 'inventory_update' });
+  await db.execute(`NOTIFY data_updates, '${notificationPayload}'`);
+}
+
 // Function to start the demo data generator
 export function startDemoDataGenerator() {
   // Insert initial metrics
   insertDemoMetrics();
+  simulateInventoryChanges();
   
-  // Insert new metrics every 10 seconds
+  // Insert new metrics and simulate inventory every 10 seconds
   setInterval(() => {
     insertDemoMetrics();
+    simulateInventoryChanges();
   }, 10000);
   
-  console.log('Demo data generator started - inserting metrics every 10 seconds');
+  console.log('Demo data generator started - inserting metrics and simulating inventory every 10 seconds');
 }
 
 export async function seedRoutesWithIndianCities() {
@@ -235,6 +324,99 @@ export async function seedSuppliers() {
   console.log('Seeded suppliers table with demo data.');
 }
 
+// Function to seed initial product and inventory data
+export async function seedInitialInventory() {
+  console.log('Checking for existing inventory...');
+  const existingInventory = await storage.getAllInventory();
+  if (existingInventory.length > 0) {
+    console.log('Inventory already exists, skipping seeding.');
+    return;
+  }
+  
+  console.log('Seeding initial Walmart product and inventory data...');
+  const categories = Object.keys(walmartProductCatalog) as Category[];
+  const allSuppliers = await storage.getAllSuppliers();
+  if (allSuppliers.length === 0) {
+    console.error("No suppliers found. Please seed suppliers before seeding inventory.");
+    return;
+  }
+
+  const inventoryItems = [];
+  for (let i = 0; i < 200; i++) {
+    const category = categories[i % categories.length];
+    const catalogEntry = walmartProductCatalog[category];
+    const brand = catalogEntry.brands[i % catalogEntry.brands.length];
+    const product = catalogEntry.products[i % catalogEntry.products.length];
+    const productName = `${brand} ${product}`;
+    const city = INDIAN_CITIES[i % INDIAN_CITIES.length];
+
+    inventoryItems.push({
+      productName,
+      category,
+      quantity: Math.floor(Math.random() * 250),
+      location: city.name,
+      supplierId: allSuppliers[i % allSuppliers.length].id,
+      lastUpdated: new Date(),
+    });
+  }
+
+  try {
+    // Drizzle doesn't have an easy "insert or ignore", so we just insert.
+    await db.insert(inventoryTable).values(inventoryItems);
+    console.log(`Seeded ${inventoryItems.length} inventory items.`);
+  } catch (error) {
+    console.error('Error seeding inventory data:', error);
+  }
+}
+
+export async function seedDatabase() {
+  await seedRoutesWithIndianCities();
+  await seedSuppliers();
+  await seedInitialInventory();
+}
+
+// Call this function when the server starts
+// seedDatabase();
+
 if (process.argv.includes('--seed-suppliers')) {
   seedSuppliers().then(() => process.exit(0));
+}
+
+export function generateSuppliers(count = 10) {
+  return Array.from({ length: count }, (_, i) => ({
+    id: i + 1,
+    name: faker.company.name(),
+    productIds: Array.from({ length: faker.number.int({ min: 1, max: 5 }) }, () => faker.number.int({ min: 100, max: 999 })),
+    reliability: faker.number.float({ min: 0.9, max: 1, fractionDigits: 2 }),
+    leadTimeDays: faker.number.int({ min: 2, max: 30 }),
+    costFactor: faker.number.float({ min: 1, max: 1.5, fractionDigits: 2 })
+  }));
+}
+
+export function generateInventory(count = 200, suppliers = generateSuppliers()) {
+  return Array.from({ length: count }, (_, i) => {
+    const supplier = suppliers[faker.number.int({ min: 0, max: suppliers.length - 1 })];
+    return {
+      id: i + 1,
+      productName: faker.commerce.productName(),
+      category: faker.commerce.department(),
+      quantity: faker.number.int({ min: 0, max: 250 }),
+      location: faker.location.city(),
+      supplierId: supplier.id,
+      lastUpdated: faker.date.recent(),
+    };
+  });
+}
+
+export function generateMetrics() {
+  return {
+    forecastAccuracy: faker.number.float({ min: 80, max: 95, fractionDigits: 2 }),
+    onTimeDelivery: faker.number.float({ min: 90, max: 98, fractionDigits: 2 }),
+    carbonFootprint: faker.number.float({ min: 2, max: 4, fractionDigits: 2 }),
+    inventoryTurnover: faker.number.float({ min: 10, max: 15, fractionDigits: 2 }),
+    activeOrders: faker.number.int({ min: 1500, max: 2000 }),
+    routesOptimized: faker.number.int({ min: 300, max: 400 }),
+    anomaliesDetected: faker.number.int({ min: 0, max: 10 }),
+    costSavings: faker.number.int({ min: 250000, max: 350000 })
+  };
 }

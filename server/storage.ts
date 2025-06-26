@@ -30,6 +30,11 @@ import { eq, desc, sql, and, inArray } from "drizzle-orm";
 import * as bcrypt from "bcrypt";
 import { randomBytes } from "crypto";
 import { INDIAN_CITY_GRAPH, INDIAN_CITIES } from './demo-data.js';
+import { clickCollectOrders, type InsertClickCollectOrder, type ClickCollectOrder } from "../shared/schema";
+import { warehouseTasks, type InsertWarehouseTask, type WarehouseTask } from "../shared/schema";
+import { microFulfillmentCenters, type InsertMicroFulfillmentCenter, type MicroFulfillmentCenter } from "../shared/schema";
+import { notifications, type InsertNotification, type Notification } from "../shared/schema";
+import { customers, type InsertCustomer, type Customer } from "../shared/schema";
 
 export interface IStorage {
   // User management
@@ -72,6 +77,37 @@ export interface IStorage {
   deleteSupplier(id: number): Promise<boolean>;
 
   getRecentMetrics(limit?: number): Promise<SystemMetrics[]>;
+
+  // Click-and-Collect Orders
+  getAllClickCollectOrders(channel?: string): Promise<ClickCollectOrder[]>;
+  getClickCollectOrder(id: number): Promise<ClickCollectOrder | undefined>;
+  createClickCollectOrder(order: InsertClickCollectOrder): Promise<ClickCollectOrder>;
+  updateClickCollectOrder(id: number, updates: Partial<InsertClickCollectOrder>): Promise<ClickCollectOrder | undefined>;
+  deleteClickCollectOrder(id: number): Promise<boolean>;
+
+  // Warehouse Automation Tasks
+  getAllWarehouseTasks(): Promise<WarehouseTask[]>;
+  getWarehouseTask(id: number): Promise<WarehouseTask | undefined>;
+  createWarehouseTask(task: InsertWarehouseTask): Promise<WarehouseTask>;
+  updateWarehouseTask(id: number, updates: Partial<InsertWarehouseTask>): Promise<WarehouseTask | undefined>;
+  deleteWarehouseTask(id: number): Promise<boolean>;
+
+  // Micro-Fulfillment Centers
+  getAllMicroFulfillmentCenters(): Promise<MicroFulfillmentCenter[]>;
+  getMicroFulfillmentCenter(id: number): Promise<MicroFulfillmentCenter | undefined>;
+  createMicroFulfillmentCenter(center: InsertMicroFulfillmentCenter): Promise<MicroFulfillmentCenter>;
+  updateMicroFulfillmentCenter(id: number, updates: Partial<InsertMicroFulfillmentCenter>): Promise<MicroFulfillmentCenter | undefined>;
+  deleteMicroFulfillmentCenter(id: number): Promise<boolean>;
+
+  // Notifications
+  getNotificationsByCustomer(customerName: string): Promise<Notification[]>;
+  createNotification(notification: InsertNotification): Promise<Notification>;
+  markNotificationRead(id: number): Promise<Notification | undefined>;
+
+  // Customer management
+  getAllCustomers(): Promise<Customer[]>;
+  getCustomerByName(name: string): Promise<Customer | undefined>;
+  updateCustomer(id: number, updates: Partial<InsertCustomer>): Promise<Customer | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -346,6 +382,116 @@ export class DatabaseStorage implements IStorage {
       .from(systemMetrics)
       .orderBy(desc(systemMetrics.timestamp))
       .limit(limit);
+  }
+
+  // Click-and-Collect Orders
+  async getAllClickCollectOrders(channel?: string): Promise<ClickCollectOrder[]> {
+    let query = db.select().from(clickCollectOrders).orderBy(desc(clickCollectOrders.createdAt));
+    if (channel) {
+      // @ts-ignore
+      query = query.where(eq(clickCollectOrders.channel, channel));
+    }
+    return await query;
+  }
+
+  async getClickCollectOrder(id: number): Promise<ClickCollectOrder | undefined> {
+    const [order] = await db.select().from(clickCollectOrders).where(eq(clickCollectOrders.id, id));
+    return order || undefined;
+  }
+
+  async createClickCollectOrder(order: InsertClickCollectOrder): Promise<ClickCollectOrder> {
+    const [newOrder] = await db.insert(clickCollectOrders).values(order).returning();
+    return newOrder;
+  }
+
+  async updateClickCollectOrder(id: number, updates: Partial<InsertClickCollectOrder>): Promise<ClickCollectOrder | undefined> {
+    const [order] = await db.update(clickCollectOrders).set({ ...updates, updatedAt: new Date() }).where(eq(clickCollectOrders.id, id)).returning();
+    return order || undefined;
+  }
+
+  async deleteClickCollectOrder(id: number): Promise<boolean> {
+    const result = await db.delete(clickCollectOrders).where(eq(clickCollectOrders.id, id));
+    return (result.rowCount || 0) > 0;
+  }
+
+  // Warehouse Automation Tasks
+  async getAllWarehouseTasks(): Promise<WarehouseTask[]> {
+    return await db.select().from(warehouseTasks).orderBy(desc(warehouseTasks.createdAt));
+  }
+
+  async getWarehouseTask(id: number): Promise<WarehouseTask | undefined> {
+    const [task] = await db.select().from(warehouseTasks).where(eq(warehouseTasks.id, id));
+    return task || undefined;
+  }
+
+  async createWarehouseTask(task: InsertWarehouseTask): Promise<WarehouseTask> {
+    const [newTask] = await db.insert(warehouseTasks).values(task).returning();
+    return newTask;
+  }
+
+  async updateWarehouseTask(id: number, updates: Partial<InsertWarehouseTask>): Promise<WarehouseTask | undefined> {
+    const [task] = await db.update(warehouseTasks).set({ ...updates, updatedAt: new Date() }).where(eq(warehouseTasks.id, id)).returning();
+    return task || undefined;
+  }
+
+  async deleteWarehouseTask(id: number): Promise<boolean> {
+    const result = await db.delete(warehouseTasks).where(eq(warehouseTasks.id, id));
+    return (result.rowCount || 0) > 0;
+  }
+
+  // Micro-Fulfillment Centers
+  async getAllMicroFulfillmentCenters(): Promise<MicroFulfillmentCenter[]> {
+    return await db.select().from(microFulfillmentCenters).orderBy(desc(microFulfillmentCenters.createdAt));
+  }
+
+  async getMicroFulfillmentCenter(id: number): Promise<MicroFulfillmentCenter | undefined> {
+    const [center] = await db.select().from(microFulfillmentCenters).where(eq(microFulfillmentCenters.id, id));
+    return center || undefined;
+  }
+
+  async createMicroFulfillmentCenter(center: InsertMicroFulfillmentCenter): Promise<MicroFulfillmentCenter> {
+    const [newCenter] = await db.insert(microFulfillmentCenters).values(center).returning();
+    return newCenter;
+  }
+
+  async updateMicroFulfillmentCenter(id: number, updates: Partial<InsertMicroFulfillmentCenter>): Promise<MicroFulfillmentCenter | undefined> {
+    const [center] = await db.update(microFulfillmentCenters).set({ ...updates, updatedAt: new Date() }).where(eq(microFulfillmentCenters.id, id)).returning();
+    return center || undefined;
+  }
+
+  async deleteMicroFulfillmentCenter(id: number): Promise<boolean> {
+    const result = await db.delete(microFulfillmentCenters).where(eq(microFulfillmentCenters.id, id));
+    return (result.rowCount || 0) > 0;
+  }
+
+  // Notifications
+  async getNotificationsByCustomer(customerName: string): Promise<Notification[]> {
+    return await db.select().from(notifications).where(eq(notifications.customerName, customerName)).orderBy(desc(notifications.createdAt));
+  }
+
+  async createNotification(notification: InsertNotification): Promise<Notification> {
+    const [newNotification] = await db.insert(notifications).values(notification).returning();
+    return newNotification;
+  }
+
+  async markNotificationRead(id: number): Promise<Notification | undefined> {
+    const [notif] = await db.update(notifications).set({ read: true }).where(eq(notifications.id, id)).returning();
+    return notif || undefined;
+  }
+
+  // Customer management
+  async getAllCustomers(): Promise<Customer[]> {
+    return await db.select().from(customers).orderBy(desc(customers.greenScore));
+  }
+
+  async getCustomerByName(name: string): Promise<Customer | undefined> {
+    const [customer] = await db.select().from(customers).where(eq(customers.name, name));
+    return customer || undefined;
+  }
+
+  async updateCustomer(id: number, updates: Partial<InsertCustomer>): Promise<Customer | undefined> {
+    const [customer] = await db.update(customers).set({ ...updates, updatedAt: new Date() }).where(eq(customers.id, id)).returning();
+    return customer || undefined;
   }
 }
 

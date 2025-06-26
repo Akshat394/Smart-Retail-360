@@ -7,6 +7,7 @@ import DriverManagement from './DriverManagement';
 import VehicleMap from './VehicleMap';
 import type { Route } from '@shared/schema';
 import RouteOptimizer from './RouteOptimizer';
+import AICommandCenterPanel from './AICommandCenterPanel';
 
 type RouteWithDriver = Route & { driverName: string | null };
 
@@ -19,6 +20,7 @@ const Routes: React.FC = () => {
   const [activeView, setActiveView] = useState<'routes' | 'drivers'>('routes');
   const [routeAnalytics, setRouteAnalytics] = useState<any>(null);
   const [alerts, setAlerts] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<'routes' | 'drivers' | 'ai-command'>('routes');
 
   const canManageRoutes = user && ['admin', 'manager', 'operations'].includes(user.role);
 
@@ -76,6 +78,10 @@ const Routes: React.FC = () => {
       default: return <MapPin className="w-4 h-4" />;
     }
   };
+
+  if (activeTab === 'ai-command') {
+    return <AICommandCenterPanel />;
+  }
 
   if (activeView === 'drivers') {
     return <DriverManagement />;

@@ -8,6 +8,7 @@ import Routes from './components/Routes';
 import Analytics from './components/Analytics';
 import DigitalTwin from './components/DigitalTwin';
 import Settings from './components/Settings';
+import AICommandCenterPanel from './components/AICommandCenterPanel';
 
 const AppContent = () => {
   const { isAuthenticated, isLoading } = useAuth();
@@ -56,6 +57,8 @@ const AppContent = () => {
     switch (activeTab) {
       case 'dashboard':
         return <Dashboard />;
+      case 'ai-command':
+        return <AICommandCenterPanel />;
       case 'routes':
         return <Routes />;
       case 'analytics':

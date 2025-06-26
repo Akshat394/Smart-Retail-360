@@ -21,6 +21,7 @@ interface SidebarProps {
 
 const menuItems = [
   { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
+  { id: 'ai-command', label: 'AI Command Center', icon: Zap },
   { id: 'routes', label: 'Route Optimization', icon: Route },
   { id: 'analytics', label: 'Forecasting', icon: TrendingUp },
   { id: 'digital-twin', label: 'Digital Twin', icon: Brain },
@@ -35,12 +36,12 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
     if (!user) return [];
     
     const rolePermissions = {
-      admin: ['dashboard', 'routes', 'analytics', 'digital-twin', 'settings'],
-      manager: ['dashboard', 'routes', 'analytics', 'digital-twin', 'settings'],
-      operations: ['dashboard', 'routes', 'settings'],
-      analyst: ['dashboard', 'analytics', 'digital-twin'],
-      planner: ['dashboard', 'analytics', 'digital-twin', 'settings'],
-      viewer: ['dashboard']
+      admin: ['dashboard', 'ai-command', 'routes', 'analytics', 'digital-twin', 'settings'],
+      manager: ['dashboard', 'ai-command', 'routes', 'analytics', 'digital-twin', 'settings'],
+      operations: ['dashboard', 'ai-command', 'routes', 'settings'],
+      analyst: ['dashboard', 'ai-command', 'analytics', 'digital-twin'],
+      planner: ['dashboard', 'ai-command', 'analytics', 'digital-twin', 'settings'],
+      viewer: ['dashboard', 'ai-command']
     };
 
     const allowedTabs = rolePermissions[user.role as keyof typeof rolePermissions] || ['dashboard'];

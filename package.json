@@ -11,10 +11,12 @@
     "db:push": "drizzle-kit push",
     "start:backend": "cross-env DATABASE_URL=\"postgresql://neondb_owner:npg_2cDWvpVSyzm5@ep-royal-mouse-a8ipcgzu-pooler.eastus2.azure.neon.tech/neondb?sslmode=require\" npm run dev",
     "start:ml": "cd ml_service && pip install -r requirements.txt && python -m uvicorn main:app --reload --port 8000",
-    "start:frontend": "cd client && npm install && npm run dev",
-    "start:all": "concurrently \"npm run start:backend\" \"npm run start:ml\" \"npm run start:frontend\""
+    "start:frontend": "cd client && npm run dev",
+    "start:all": "concurrently \"npm run start:backend\" \"npm run start:ml\" \"npm run start:frontend\"",
+    "start:all:manual": "echo For Windows: Open 3 terminals and run: npm run start:backend, npm run start:ml, npm run start:frontend"
   },
   "dependencies": {
+    "@faker-js/faker": "^9.8.0",
     "@googlemaps/google-maps-services-js": "^3.4.1",
     "@hookform/resolvers": "^3.10.0",
     "@jridgewell/trace-mapping": "^0.3.25",
