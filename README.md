@@ -10,8 +10,19 @@
 
 ---
 
+## 🚚 2024: Delivery Modes & Route Optimization Upgrade
+
+- **Full support for all major delivery modes:** Truck, Mini Truck, Drone, and Autonomous Vehicle
+- **Route Optimization panel and vehicle map** now show, filter, and analyze all delivery modes in real time
+- **Backend APIs and simulation logic** upgraded to handle all modes for cost, speed, and CO₂ analytics
+- **Randomized, realistic delivery mode assignment** for every route and vehicle—no static mock data
+- **Sidebar and navigation** fully integrated for seamless access to new features
+
+---
+
 ## ✨ Key Features (2024 Edition)
 
+- **🚚 Multi-Modal Delivery:** Truck, Mini Truck, Drone, and Autonomous Vehicle support for all route and vehicle analytics
 - **📦 Omnichannel Orders:** Unified dashboard for online, in-store, mobile, and partner orders with real-time updates and channel analytics
 - **🛒 Click-and-Collect:** End-to-end order flow, status management, and customer notifications
 - **🌱 Green Delivery & Sustainability:** Track green deliveries, CO₂ saved, green delivery rate, and perform carbon offset actions. Company-wide leaderboard for top customers, products, and locations
@@ -23,7 +34,7 @@
 - **📈 Advanced Analytics:** Company-wide sustainability leaderboard, product/location analytics, trends, and actionable insights
 - **🔔 Real-Time Notifications:** Order status, system alerts, and warehouse anomalies delivered instantly
 - **🧠 Predictive Analytics & Forecasting:** ML-powered demand prediction (ARIMA, LSTM, Ensemble)
-- **🗺️ Route Optimization:** AI-powered, eco-friendly, and fastest route planning with Dijkstra's algorithm and real Indian city data
+- **🗺️ Route Optimization:** AI-powered, eco-friendly, and fastest route planning with Dijkstra's algorithm and real Indian city data. Now supports all delivery modes.
 - **🧑‍💼 Driver Management:** Full CRUD for delivery teams, live status, and assignment
 - **🛣️ Vehicle Tracking:** Interactive Google Maps with live vehicle locations, traffic alerts, and route polylines
 - **🧠 Digital Twin:** Scenario simulation for supply chain stress-testing
@@ -68,8 +79,8 @@
 - **Live KPI Dashboard:** Forecast accuracy, on-time delivery, carbon footprint, inventory turnover, and more
 - **Omnichannel & Click-and-Collect:** Real-time order management, channel analytics, and customer notifications
 - **Green Delivery & Sustainability:** Company-wide leaderboard, CO₂ saved, green delivery rate, and carbon offset
-- **Route Optimization:** Select any Indian city, see optimized route from New Delhi HQ, live traffic alerts, and carbon savings
-- **Vehicle Map:** Real-time vehicle locations, traffic alerts, and route overlays on Google Maps
+- **Route Optimization:** Select any Indian city, see optimized route from New Delhi HQ, live traffic alerts, and carbon savings. **Now supports Truck, Mini Truck, Drone, and Autonomous Vehicle modes.**
+- **Vehicle Map:** Real-time vehicle locations, traffic alerts, and route overlays on Google Maps. **Filter and analyze by delivery mode.**
 - **Driver Management:** Add, edit, assign, and monitor drivers
 - **Smart Warehousing:** Robot health, maintenance, zone heatmap, and automation tasks
 - **Micro-Fulfillment:** Real-time stock, order routing, and fulfillment analytics
