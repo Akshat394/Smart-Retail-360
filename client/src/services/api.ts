@@ -147,6 +147,22 @@ class ApiService {
       body: JSON.stringify({ stops }),
     });
   }
+
+  async assignAutonomousDelivery(orderId: number, mode: string) {
+    return this.request('/autonomous-deliveries/assign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId, mode }),
+    });
+  }
+
+  async geocode(address: string): Promise<{ lat: number; lng: number }> {
+    return this.request(`/geocode?address=${encodeURIComponent(address)}`);
+  }
+
+  async getAutonomousDeliveries() {
+    return this.request('/autonomous-deliveries');
+  }
 }
 
 export const apiService = new ApiService();

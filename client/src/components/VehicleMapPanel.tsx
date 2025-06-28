@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import type { Filters } from './SidebarFilters_new';
 import { generateVehicles } from './mockData';
+import { useNotification } from '../hooks/useNotification';
 
 type Props = {
   filters: Filters;
@@ -24,6 +25,7 @@ function project(lat: number, lng: number) {
 
 const VehicleMapPanel: React.FC<Props> = ({ filters, highlightVehicleIds = [], onVehicleHover, highlightRegion, vehicles: propVehicles }) => {
   const vehicles = propVehicles ?? (useMemo(() => generateVehicles(), []) as any[]);
+  const { showNotification } = useNotification();
 
   const filteredVehicles = useMemo(() =>
     vehicles.filter(v =>

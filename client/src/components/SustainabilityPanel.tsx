@@ -3,12 +3,15 @@ import { generateSustainabilityData } from './mockData';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { Leaf } from 'lucide-react';
 import type { Filters } from './SidebarFilters_new';
+import { useNotification } from '../hooks/useNotification';
 
 type Props = {
   filters: Filters;
 };
 
 const SustainabilityPanel: React.FC<Props> = ({ filters }) => {
+  const { showNotification } = useNotification();
+
   // For demo, filter only by year/month/category/state/city if present
   // In a real app, this would filter a list of orders or deliveries
   const sustainabilityData = useMemo(() => generateSustainabilityData(), []);

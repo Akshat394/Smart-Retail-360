@@ -4,6 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { TrendingUp } from 'lucide-react';
 import type { Filters } from './SidebarFilters_new';
 import VehicleMapPanel from './VehicleMapPanel';
+import { useNotification } from '../hooks/useNotification';
 
 type Props = {
   filters: Filters;
@@ -70,6 +71,8 @@ const RouteOptimizationPanel: React.FC<Props> = ({ filters }) => {
 
   // Helper to get bar color for each region
   const getBarColor = (region: string, base: string, highlight: string) => highlightRegion && region === highlightRegion ? highlight : base;
+
+  const { showNotification } = useNotification();
 
   return (
     <div className="bg-gray-900 min-h-screen p-6">

@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { generateInventory, InventoryItem } from './mockData';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import type { Filters } from './SidebarFilters_new';
+import { useNotification } from '../hooks/useNotification';
 
 const getStockStatus = (quantity: number) => {
   if (quantity === 0) return { label: 'Out of Stock', color: '#EF4444' };
@@ -17,6 +18,7 @@ type Props = {
 
 const InventoryPanel: React.FC<Props> = ({ filters, search = '' }) => {
   const [inventorySearch, setInventorySearch] = useState(search);
+  const { showNotification } = useNotification();
 
   // Filter inventory by sidebar filters
   const filteredInventory = useMemo(() =>

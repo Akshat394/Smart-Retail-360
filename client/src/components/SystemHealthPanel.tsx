@@ -3,6 +3,7 @@ import { generateSystemHealthData } from './mockData';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { CheckCircle, AlertTriangle, XCircle, Clock } from 'lucide-react';
 import type { Filters } from './SidebarFilters_new';
+import { useNotification } from '../hooks/useNotification';
 
 type Props = {
   filters: Filters;
@@ -16,6 +17,7 @@ const statusMap = {
 
 const SystemHealthPanel: React.FC<Props> = ({ filters }) => {
   const systemHealthData = useMemo(() => generateSystemHealthData(), []);
+  const { showNotification } = useNotification();
 
   // For demo, filter by reducing uptime and increasing avgResponseTime
   const filtered = useMemo(() => {

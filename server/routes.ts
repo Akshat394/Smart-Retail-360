@@ -14,6 +14,7 @@ import { getMLPrediction, getMLExplanation } from './mlService';
 import { optimizeRoute } from './services/routeOptimizer';
 import { eq, sql } from 'drizzle-orm';
 import { db } from './db';
+import fetch from 'node-fetch';
 
 // Helper: city-based alert type inference
 function inferCityAlertType(city: string | undefined) {
@@ -1413,6 +1414,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (demoTimeout) clearTimeout(demoTimeout);
     demoTimeout = setTimeout(() => { demoRecommendations = []; }, 5 * 60 * 1000);
     res.json({ success: true, message: 'Demo recommendations injected' });
+  });
+
+  // Geocoding endpoint for frontend
+  app.get('/api/geocode', authenticate, async (req, res) => {
+    try {
+      let { address } = req.query;
+      if (!address) return res.status(400).json({ error: 'Missing address' });
+      if (Array.isArray(address)) address = address[0];
+      if (typeof address !== 'string') return res.status(400).json({ error: 'Invalid address' });
+      const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+      if (!apiKey) return res.status(500).json({ error: 'Google Maps API key not set' });
+      const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`;
+      const response = await fetch(url);
+      const data = await response.json();
+      if (data.status !== 'OK' || !data.results.length) {
+        return res.status(404).json({ error: 'Address not found' });
+      }
+      const { lat, lng } = data.results[0].geometry.location;
+      res.json({ lat, lng });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to geocode address' });
+    }
   });
 
   const httpServer = createServer(app);

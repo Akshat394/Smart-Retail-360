@@ -4,6 +4,7 @@ import { Play, Pause, RotateCcw, Zap, Cloud, Package, TrendingUp, AlertTriangle,
 import { apiService } from '../services/api';
 import type { SimulationReport } from '@shared/schema';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { useNotification } from '../hooks/useNotification';
 
 const DigitalTwin: React.FC = () => {
   const [isSimulating, setIsSimulating] = useState(false);
@@ -15,6 +16,7 @@ const DigitalTwin: React.FC = () => {
   const [history, setHistory] = useState<any[]>([]);
   const [inventory, setInventory] = useState<any[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
+  const { showNotification } = useNotification();
 
   const scenarios = [
     {
@@ -175,18 +177,17 @@ const DigitalTwin: React.FC = () => {
     setIsSimulating(true);
     setSimulationError(null);
     setSimulationResult(null);
-
     try {
       const scenarioToRun: 'demand_spike' | 'weather_event' | 'supplier_outage' | 'peak_season' = selectedScenario;
-      
       const result = await apiService.runSimulation(scenarioToRun, parameters) as SimulationReport;
       setSimulationResult(result);
-
+      showNotification({ message: 'Simulation completed successfully', type: 'success', orderId: 0, customerName: '' });
     } catch (error) {
       console.error("Simulation failed:", error);
       setSimulationError(error instanceof Error ? error.message : "An unknown error occurred.");
+      showNotification({ message: 'Simulation failed: ' + (error instanceof Error ? error.message : 'Unknown error'), type: 'error', orderId: 0, customerName: '' });
     } finally {
-        setIsSimulating(false);
+      setIsSimulating(false);
     }
   };
 
@@ -520,6 +521,28 @@ const DigitalTwin: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+            </div>
+          )}
+
+          {/* Overlay for affected routes/cities */}
+          {simulationResult && simulationResult.details && (
+            <div className="mb-6">
+              <h4 className="text-lg font-semibold text-white mb-2">Affected Routes/Cities</h4>
+              {simulationResult.details.affectedRoutes && simulationResult.details.affectedRoutes.length > 0 ? (
+                <ul className="list-disc ml-6 text-gray-300">
+                  {simulationResult.details.affectedRoutes.map((route: any, idx: number) => (
+                    <li key={idx}>
+                      {route.destination ? `Route to ${route.destination}` : JSON.stringify(route)}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <span className="text-gray-400">No routes directly affected.</span>
+              )}
+              {/* Placeholder for map overlays */}
+              {simulationResult.details.reroutedPaths && simulationResult.details.reroutedPaths.length > 0 && (
+                <div className="mt-2 text-xs text-blue-300">Rerouted paths calculated. (Map overlay coming soon!)</div>
+              )}
             </div>
           )}
 

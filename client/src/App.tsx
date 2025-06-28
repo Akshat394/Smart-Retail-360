@@ -9,6 +9,7 @@ import Analytics from './components/Analytics';
 import DigitalTwin from './components/DigitalTwin';
 import Settings from './components/Settings';
 import AICommandCenterPanel from './components/AICommandCenterPanel';
+import { NotificationProvider } from './hooks/useNotification';
 
 const AppContent = () => {
   const { isAuthenticated, isLoading } = useAuth();
@@ -93,7 +94,9 @@ const AppContent = () => {
 function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <NotificationProvider>
+        <AppContent />
+      </NotificationProvider>
     </AuthProvider>
   );
 }

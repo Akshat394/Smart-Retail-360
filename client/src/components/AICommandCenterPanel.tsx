@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { AlertTriangle, Zap, Package, RefreshCw, CheckCircle, Loader2, XCircle, Play } from 'lucide-react';
+import { useNotification } from '../hooks/useNotification';
 
 interface Recommendation {
   type: string;
@@ -36,6 +37,7 @@ const AICommandCenterPanel: React.FC = () => {
   const [actionLoading, setActionLoading] = useState<number | null>(null);
   const [recentActions, setRecentActions] = useState<ActionLog[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
+  const { showNotification } = useNotification();
 
   const fetchRecs = () => {
     setLoading(true);
@@ -93,6 +95,7 @@ const AICommandCenterPanel: React.FC = () => {
         setTimeout(() => {
           fetchRecs();
         }, 500);
+        showNotification({ message: result.message, type: 'success', orderId: 0, customerName: '' });
       } else {
         setErrorMsg(result.error || 'Action failed');
         setRecentActions(prev => [{
@@ -102,6 +105,7 @@ const AICommandCenterPanel: React.FC = () => {
           result: 'error' as 'error',
           details: result.error
         }, ...prev].slice(0, 5));
+        showNotification({ message: result.error || 'Action failed', type: 'error', orderId: 0, customerName: '' });
       }
     } catch (e: any) {
       setErrorMsg(e.message || 'Action failed');
@@ -112,6 +116,7 @@ const AICommandCenterPanel: React.FC = () => {
         result: 'error' as 'error',
         details: e.message
       }, ...prev].slice(0, 5));
+      showNotification({ message: e.message || 'Action failed', type: 'error', orderId: 0, customerName: '' });
     }
     setTimeout(() => { setActionMsg(null); setErrorMsg(null); setActionLoading(null); }, 2500);
   };
@@ -124,6 +129,7 @@ const AICommandCenterPanel: React.FC = () => {
       setTimeout(fetchRecs, 500);
     } catch {
       setErrorMsg('Failed to simulate event');
+      showNotification({ message: 'Failed to simulate event', type: 'error', orderId: 0, customerName: '' });
     } finally {
       setLoading(false);
     }
