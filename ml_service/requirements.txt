@@ -2,4 +2,11 @@ fastapi
 uvicorn
 scikit-learn
 joblib
-numpy 
+numpy
+pandas
+statsmodels
+tensorflow
+matplotlib
+seaborn
+pytest
+pytest-cov 

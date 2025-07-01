@@ -1,4 +1,4 @@
-import type { SystemMetrics } from '../shared/schema';
+import type { SystemMetrics } from '../../../shared/schema';
 
 export interface Anomaly {
   metric: string;

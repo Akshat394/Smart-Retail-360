@@ -1,7 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
-import { registerRoutes } from "./routes";
+import { registerRoutes } from "./src/routes/routes";
 import { setupVite, serveStatic, log } from "./vite";
-import { seedDatabase } from './demo-data';
+import { seedDatabase } from './src/utils/demo-data';
 
 const app = express();
 app.use(express.json());

@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { storage } from './storage';
+import { storage } from '../utils/storage';
 import type { User } from '@shared/schema';
 
 export interface AuthenticatedRequest extends Request {

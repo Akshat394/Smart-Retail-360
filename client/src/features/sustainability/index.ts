@@ -1,0 +1,1 @@
+export { default as SustainabilityPanel } from '../../components/SustainabilityPanel'; 

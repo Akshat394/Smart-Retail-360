@@ -10,7 +10,19 @@ import {
   Database,
   TrendingUp,
   LogOut,
-  User
+  User,
+  Shield,
+  Cpu,
+  Link,
+  FileText,
+  Eye,
+  Lock,
+  Globe,
+  Leaf,
+  Truck,
+  Warehouse,
+  AlertTriangle,
+  CheckCircle
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
@@ -25,6 +37,17 @@ const menuItems = [
   { id: 'routes', label: 'Route Optimization', icon: Route },
   { id: 'analytics', label: 'Forecasting', icon: TrendingUp },
   { id: 'digital-twin', label: 'Digital Twin', icon: Brain },
+  { id: 'blockchain', label: 'Blockchain', icon: Link },
+  { id: 'edge-computing', label: 'Edge Computing', icon: Cpu },
+  { id: 'security', label: 'Security', icon: Shield },
+  { id: 'compliance', label: 'Compliance', icon: FileText },
+  { id: 'sustainability', label: 'Sustainability', icon: Leaf },
+  { id: 'warehouse', label: 'Warehouse', icon: Warehouse },
+  { id: 'logistics', label: 'Logistics', icon: Truck },
+  { id: 'inventory', label: 'Inventory', icon: Database },
+  { id: 'orders', label: 'Orders', icon: Activity },
+  { id: 'robotics', label: 'Robotics', icon: Cpu },
+  { id: 'ar-vr', label: 'AR/VR', icon: Eye },
   { id: 'settings', label: 'Settings', icon: Settings }
 ];
 
@@ -36,12 +59,33 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
     if (!user) return [];
     
     const rolePermissions = {
-      admin: ['dashboard', 'ai-command', 'routes', 'analytics', 'digital-twin', 'settings'],
-      manager: ['dashboard', 'ai-command', 'routes', 'analytics', 'digital-twin', 'settings'],
-      operations: ['dashboard', 'ai-command', 'routes', 'settings'],
-      analyst: ['dashboard', 'ai-command', 'analytics', 'digital-twin'],
-      planner: ['dashboard', 'ai-command', 'analytics', 'digital-twin', 'settings'],
-      viewer: ['dashboard', 'ai-command']
+      admin: [
+        'dashboard', 'ai-command', 'routes', 'analytics', 'digital-twin', 
+        'blockchain', 'edge-computing', 'security', 'compliance', 
+        'sustainability', 'warehouse', 'logistics', 'inventory', 
+        'orders', 'robotics', 'ar-vr', 'settings'
+      ],
+      manager: [
+        'dashboard', 'ai-command', 'routes', 'analytics', 'digital-twin',
+        'blockchain', 'edge-computing', 'security', 'compliance',
+        'sustainability', 'warehouse', 'logistics', 'inventory',
+        'orders', 'robotics', 'ar-vr', 'settings'
+      ],
+      operations: [
+        'dashboard', 'ai-command', 'routes', 'warehouse', 'logistics',
+        'inventory', 'orders', 'robotics', 'settings'
+      ],
+      analyst: [
+        'dashboard', 'ai-command', 'analytics', 'digital-twin',
+        'blockchain', 'sustainability', 'ar-vr'
+      ],
+      planner: [
+        'dashboard', 'ai-command', 'analytics', 'digital-twin',
+        'routes', 'logistics', 'inventory', 'sustainability'
+      ],
+      viewer: [
+        'dashboard', 'ai-command', 'analytics', 'sustainability'
+      ]
     };
 
     const allowedTabs = rolePermissions[user.role as keyof typeof rolePermissions] || ['dashboard'];
@@ -104,6 +148,18 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
               <span className="text-gray-400">ML Models</span>
               <Brain className="w-3 h-3 text-purple-400" />
             </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-gray-400">Blockchain</span>
+              <Link className="w-3 h-3 text-green-400" />
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-gray-400">Edge Devices</span>
+              <Cpu className="w-3 h-3 text-blue-400" />
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-gray-400">Security</span>
+              <Shield className="w-3 h-3 text-green-400" />
+            </div>
           </div>
         </div>
       </div>
@@ -124,7 +180,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-4">
+      <nav className="flex-1 p-4 overflow-y-auto">
         <ul className="space-y-2">
           {filteredMenuItems.map((item, index) => {
             const Icon = item.icon;
@@ -161,6 +217,26 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
           })}
         </ul>
       </nav>
+
+      {/* Quick Actions */}
+      <div className="p-4 border-t border-gray-700">
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-xs text-gray-400">
+            <span>Active Alerts</span>
+            <div className="flex items-center space-x-1">
+              <AlertTriangle className="w-3 h-3 text-yellow-400" />
+              <span className="text-yellow-400">3</span>
+            </div>
+          </div>
+          <div className="flex items-center justify-between text-xs text-gray-400">
+            <span>System Health</span>
+            <div className="flex items-center space-x-1">
+              <CheckCircle className="w-3 h-3 text-green-400" />
+              <span className="text-green-400">98%</span>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Logout Button */}
       <div className="p-4 border-t border-gray-700">

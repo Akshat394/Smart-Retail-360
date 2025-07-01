@@ -24,17 +24,17 @@ import {
   type Supplier,
   suppliers
 } from "@shared/schema";
-import { suppliers as suppliersSchema } from '../shared/schema';
+import { suppliers as suppliersSchema } from '../../../shared/schema';
 import { db } from "./db";
 import { eq, desc, sql, and, inArray } from "drizzle-orm";
 import * as bcrypt from "bcrypt";
 import { randomBytes } from "crypto";
 import { INDIAN_CITY_GRAPH, INDIAN_CITIES } from './demo-data.js';
-import { clickCollectOrders, type InsertClickCollectOrder, type ClickCollectOrder } from "../shared/schema";
-import { warehouseTasks, type InsertWarehouseTask, type WarehouseTask } from "../shared/schema";
-import { microFulfillmentCenters, type InsertMicroFulfillmentCenter, type MicroFulfillmentCenter } from "../shared/schema";
-import { notifications, type InsertNotification, type Notification } from "../shared/schema";
-import { customers, type InsertCustomer, type Customer } from "../shared/schema";
+import { clickCollectOrders, type InsertClickCollectOrder, type ClickCollectOrder } from '../../../shared/schema';
+import { warehouseTasks, type InsertWarehouseTask, type WarehouseTask } from '../../../shared/schema';
+import { microFulfillmentCenters, type InsertMicroFulfillmentCenter, type MicroFulfillmentCenter } from '../../../shared/schema';
+import { notifications, type InsertNotification, type Notification } from '../../../shared/schema';
+import { customers, type InsertCustomer, type Customer } from '../../../shared/schema';
 
 export interface IStorage {
   // User management

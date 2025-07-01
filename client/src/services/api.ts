@@ -163,6 +163,118 @@ class ApiService {
   async getAutonomousDeliveries() {
     return this.request('/autonomous-deliveries');
   }
+
+  // Generic GET method for any endpoint
+  async get(endpoint: string) {
+    return this.request(endpoint);
+  }
+
+  // Warehouse 3D layout
+  async getWarehouseLayout() {
+    return this.request('/warehouse/3d-layout');
+  }
+
+  // Robot health data
+  async getRobotHealthData() {
+    return this.request('/real-time/robot-health');
+  }
+
+  // Click and collect orders
+  async getClickCollectOrders(channel?: string) {
+    const url = channel ? `/clickcollect?channel=${channel}` : '/clickcollect';
+    return this.request(url);
+  }
+
+  async createClickCollectOrder(order: any) {
+    return this.request('/clickcollect', {
+      method: 'POST',
+      body: JSON.stringify(order),
+    });
+  }
+
+  async updateClickCollectOrder(id: number, updates: any) {
+    return this.request(`/clickcollect/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    });
+  }
+
+  // AI recommendations
+  async getAIRecommendations() {
+    return this.request('/ai-recommendations');
+  }
+
+  async executeAIAction(action: string, data: any) {
+    return this.request(`/ai-action/${action}`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Sustainability metrics
+  async getSustainabilityMetrics() {
+    return this.request('/sustainability-metrics');
+  }
+
+  async getGreenLeaderboard() {
+    return this.request('/green-leaderboard');
+  }
+
+  // Warehouse tasks
+  async getWarehouseTasks() {
+    return this.request('/warehouse/tasks');
+  }
+
+  async createWarehouseTask(task: any) {
+    return this.request('/warehouse/tasks', {
+      method: 'POST',
+      body: JSON.stringify(task),
+    });
+  }
+
+  async updateWarehouseTask(id: number, updates: any) {
+    return this.request(`/warehouse/tasks/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    });
+  }
+
+  // Notifications
+  async getNotifications(customerName: string) {
+    return this.request(`/notifications?customerName=${encodeURIComponent(customerName)}`);
+  }
+
+  async markNotificationRead(id: number) {
+    return this.request(`/notifications/${id}/read`, {
+      method: 'PATCH',
+    });
+  }
+
+  // Push notification methods
+  async createPushSubscription(subscription: any) {
+    return this.request('/push-subscriptions', {
+      method: 'POST',
+      body: JSON.stringify(subscription),
+    });
+  }
+
+  async deletePushSubscription(endpoint: string) {
+    return this.request('/push-subscriptions', {
+      method: 'DELETE',
+      body: JSON.stringify({ endpoint }),
+    });
+  }
+
+  async getNotificationHistory() {
+    return this.request('/notification-history');
+  }
+
+  async updateNotificationPreferences(preferences: any) {
+    return this.request('/notification-preferences', {
+      method: 'PUT',
+      body: JSON.stringify(preferences),
+    });
+  }
 }
 
 export const apiService = new ApiService();

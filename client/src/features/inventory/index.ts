@@ -1,0 +1,1 @@
+export { default as InventoryPanel } from '../../components/InventoryPanel'; 

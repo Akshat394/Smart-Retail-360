@@ -1,6 +1,6 @@
 import { storage } from "./storage.js";
 import { db } from './db.js';
-import { routes, type IndianCity, suppliers, inventory as inventoryTable } from '../shared/schema';
+import { routes, type IndianCity, suppliers, inventory as inventoryTable } from '../../../shared/schema';
 import { eq, sql } from "drizzle-orm";
 import { faker } from '@faker-js/faker';
 

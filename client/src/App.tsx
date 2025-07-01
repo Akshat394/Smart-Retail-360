@@ -11,9 +11,32 @@ import Settings from './components/Settings';
 import AICommandCenterPanel from './components/AICommandCenterPanel';
 import { NotificationProvider } from './hooks/useNotification';
 
+// Import feature components
+import { BlockchainTraceability } from './features/blockchain';
+import { SecurityDashboard, TwoFactorAuth } from './features/security';
+import { EdgeDevices, EmergencyCoordination } from './features/edge';
+import { GDPRManagement, AuditLogs } from './features/compliance';
+import { SustainabilityPanel } from './features/sustainability';
+import { InventoryPanel } from './features/inventory';
+import { OrdersPanel } from './features/orders';
+import { RoboticsPanel } from './features/robotics';
+import { Warehouse3D } from './features/ar-vr';
+
+// Import types
+import { Filters } from './components/SidebarFilters_new';
+
 const AppContent = () => {
   const { isAuthenticated, isLoading } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
+  
+  // Initialize default filters
+  const defaultFilters: Filters = {
+    state: [],
+    city: [],
+    category: [],
+    month: [],
+    yearRange: { min: 2021, max: 2024 },
+  };
 
   if (isLoading) {
     return (
@@ -66,6 +89,28 @@ const AppContent = () => {
         return <Analytics />;
       case 'digital-twin':
         return <DigitalTwin />;
+      case 'blockchain':
+        return <BlockchainTraceability />;
+      case 'edge-computing':
+        return <EdgeDevices />;
+      case 'security':
+        return <SecurityDashboard />;
+      case 'compliance':
+        return <GDPRManagement />;
+      case 'sustainability':
+        return <SustainabilityPanel filters={defaultFilters} />;
+      case 'warehouse':
+        return <Warehouse3D />;
+      case 'logistics':
+        return <Routes />; // Reuse Routes component for logistics
+      case 'inventory':
+        return <InventoryPanel filters={defaultFilters} />;
+      case 'orders':
+        return <OrdersPanel filters={defaultFilters} />;
+      case 'robotics':
+        return <RoboticsPanel filters={defaultFilters} />;
+      case 'ar-vr':
+        return <Warehouse3D />;
       case 'settings':
         return <Settings />;
       default:

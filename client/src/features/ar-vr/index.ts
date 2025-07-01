@@ -1,0 +1,1 @@
+export { default as Warehouse3D } from '../../components/ar-vr/Warehouse3D'; 

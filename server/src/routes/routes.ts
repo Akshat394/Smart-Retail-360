@@ -1,20 +1,60 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
-import { storage } from "./storage";
-import { pool } from "./db";
-import { startDemoDataGenerator } from "./demo-data";
+import { storage } from "../utils/storage";
+import { pool } from "../utils/db";
+import { startDemoDataGenerator, INDIAN_CITY_GRAPH, INDIAN_CITIES } from "../utils/demo-data";
 import { authenticate, authorize, ROLES, type AuthenticatedRequest } from "./auth";
 import { loginUserSchema, insertUserSchema, insertDriverSchema, insertRouteSchema, type IndianCity, type SimulationParams, insertSupplierSchema, insertClickCollectOrderSchema, clickCollectOrders, inventory as inventoryTable } from "@shared/schema";
-import { dijkstraShortestPath } from './storage';
-import { INDIAN_CITY_GRAPH, INDIAN_CITIES } from './demo-data';
-import { runSimulation } from './simulationEngine';
-import { detectMetricAnomalies } from './anomalyDetection';
-import { getMLPrediction, getMLExplanation } from './mlService';
-import { optimizeRoute } from './services/routeOptimizer';
+import { dijkstraShortestPath } from '../utils/storage';
+import { runSimulation } from '../utils/simulationEngine';
+import { detectMetricAnomalies } from '../utils/anomalyDetection';
+import { getMLPrediction, getMLExplanation } from '../utils/mlService';
+import { optimizeRoute } from '../services/routeOptimizer';
 import { eq, sql } from 'drizzle-orm';
-import { db } from './db';
+import { db } from '../utils/db';
 import fetch from 'node-fetch';
+import { realTimeAnalytics } from '../services/realTimeAnalytics';
+import { securityService } from '../services/security';
+import { externalIntegrations } from '../services/externalIntegrations';
+import { blockchainService } from '../../../blockchain/traceability';
+
+// Import edge computing functions (these would be from the Python service)
+// For now, we'll create mock implementations
+const get_all_devices_status = async (): Promise<Record<string, any>> => {
+  // Mock implementation - in real app, this would call the Python edge service
+  return {
+    'device-001': {
+      device_id: 'device-001',
+      device_type: 'sensor',
+      location: 'Warehouse A',
+      is_online: true,
+      last_seen: new Date().toISOString(),
+      sensor_readings: {
+        temperature: 22.5,
+        humidity: 45.0,
+        vibration: 0.1,
+        power: 100.0
+      },
+      buffer_status: {
+        size: 5,
+        max_size: 1000,
+        utilization: 0.5
+      }
+    }
+  };
+};
+
+const get_device_status = async (deviceId: string) => {
+  const devices = await get_all_devices_status();
+  return devices[deviceId] || null;
+};
+
+const trigger_emergency_coordination = async (clusterId: string, emergencyType: string, details: any) => {
+  // Mock implementation - in real app, this would trigger emergency coordination
+  console.log(`Emergency coordination triggered: ${emergencyType} in cluster ${clusterId}`, details);
+  return true;
+};
 
 // Helper: city-based alert type inference
 function inferCityAlertType(city: string | undefined) {
@@ -1435,6 +1475,495 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ lat, lng });
     } catch (error) {
       res.status(500).json({ error: 'Failed to geocode address' });
+    }
+  });
+
+  // Enhanced Real-Time Analytics Endpoints
+  app.get('/api/real-time/kpi', authenticate, async (req, res) => {
+    try {
+      const kpiData = await realTimeAnalytics.generateKPIMetrics();
+      res.json(kpiData);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch KPI data' });
+    }
+  });
+
+  app.get('/api/real-time/robot-health', authenticate, async (req, res) => {
+    try {
+      const robotHealth = realTimeAnalytics.getRobotHealthData();
+      res.json(robotHealth);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch robot health data' });
+    }
+  });
+
+  // Advanced ML Model Endpoints
+  app.post('/api/ml/demand-forecast', authenticate, async (req, res) => {
+    try {
+      const { historicalData, productId } = req.body;
+      const forecast = await getMLPrediction(historicalData, { model: 'transformer', productId });
+      res.json(forecast);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to generate demand forecast' });
+    }
+  });
+
+  app.post('/api/ml/warehouse-vision', authenticate, async (req, res) => {
+    try {
+      const { imageData } = req.body;
+      const analysis = await getMLPrediction(imageData, { model: 'yolo' });
+      res.json(analysis);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to analyze warehouse vision' });
+    }
+  });
+
+  app.post('/api/ml/route-optimization-rl', authenticate, async (req, res) => {
+    try {
+      const { routeState, routeInfo } = req.body;
+      const optimization = await getMLPrediction(routeState, { model: 'dqn', routeInfo });
+      res.json(optimization);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to optimize route with RL' });
+    }
+  });
+
+  app.post('/api/ml/sentiment-analysis', authenticate, async (req, res) => {
+    try {
+      const { feedbackText } = req.body;
+      const sentiment = await getMLPrediction(feedbackText, { model: 'nlp' });
+      res.json(sentiment);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to analyze sentiment' });
+    }
+  });
+
+  // Blockchain Traceability Endpoints
+  app.post('/api/blockchain/trace', authenticate, async (req, res) => {
+    try {
+      const { productId, location, supplier, batchNumber, metadata } = req.body;
+      const trace = await blockchainService.createProductTrace(productId, location, supplier, batchNumber, metadata);
+      res.json(trace);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to create product trace' });
+    }
+  });
+
+  app.get('/api/blockchain/trace/:productId', authenticate, async (req, res) => {
+    try {
+      const { productId } = req.params;
+      const traces = await blockchainService.getProductTraceability(productId);
+      res.json(traces);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to get product traceability' });
+    }
+  });
+
+  app.post('/api/blockchain/green-tokens/mint', authenticate, async (req, res) => {
+    try {
+      const { owner, amount, carbonOffset } = req.body;
+      const token = await blockchainService.mintGreenTokens(owner, amount, carbonOffset);
+      res.json(token);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to mint green tokens' });
+    }
+  });
+
+  app.post('/api/blockchain/green-tokens/burn', authenticate, async (req, res) => {
+    try {
+      const { owner, amount } = req.body;
+      const success = await blockchainService.burnGreenTokens(owner, amount);
+      res.json({ success });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to burn green tokens' });
+    }
+  });
+
+  app.get('/api/blockchain/green-tokens/balance/:owner', authenticate, async (req, res) => {
+    try {
+      const { owner } = req.params;
+      const balance = await blockchainService.getGreenTokenBalance(owner);
+      res.json({ balance });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to get green token balance' });
+    }
+  });
+
+  app.post('/api/blockchain/smart-contract', authenticate, async (req, res) => {
+    try {
+      const { supplierId, productId, amount, conditions } = req.body;
+      const contract = await blockchainService.createSmartContract(supplierId, productId, amount, conditions);
+      res.json(contract);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to create smart contract' });
+    }
+  });
+
+  app.post('/api/blockchain/smart-contract/:contractId/execute', authenticate, async (req, res) => {
+    try {
+      const { contractId } = req.params;
+      const { deliveryConfirmation } = req.body;
+      const success = await blockchainService.executeSmartContract(contractId, deliveryConfirmation);
+      res.json({ success });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to execute smart contract' });
+    }
+  });
+
+  app.get('/api/blockchain/authenticity/:productId', authenticate, async (req, res) => {
+    try {
+      const { productId } = req.params;
+      const isAuthentic = await blockchainService.verifyProductAuthenticity(productId);
+      res.json({ isAuthentic });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to verify product authenticity' });
+    }
+  });
+
+  app.get('/api/blockchain/stats', authenticate, async (req, res) => {
+    try {
+      const stats = await blockchainService.getBlockchainStats();
+      res.json(stats);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to get blockchain stats' });
+    }
+  });
+
+  // Edge Computing Endpoints
+  app.get('/api/edge/devices', authenticate, async (req, res) => {
+    try {
+      const devices = await get_all_devices_status();
+      res.json(devices);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to get edge devices' });
+    }
+  });
+
+  app.get('/api/edge/devices/:deviceId', authenticate, async (req, res) => {
+    try {
+      const { deviceId } = req.params;
+      const device = await get_device_status(deviceId);
+      res.json(device);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to get device status' });
+    }
+  });
+
+  app.post('/api/edge/emergency-coordination', authenticate, async (req, res) => {
+    try {
+      const { clusterId, emergencyType, details } = req.body;
+      await trigger_emergency_coordination(clusterId, emergencyType, details);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to trigger emergency coordination' });
+    }
+  });
+
+  // AR/VR Endpoints
+  app.get('/api/warehouse/3d-layout', authenticate, async (req, res) => {
+    try {
+      // Mock warehouse layout data
+      const layout = [
+        { zone: 'A', products: ['Laptop', 'Smartphone'], capacity: 100, position: { x: -30, y: 0, z: -30 }, dimensions: { width: 20, height: 8, depth: 20 } },
+        { zone: 'B', products: ['T-Shirt', 'Desk Chair'], capacity: 80, position: { x: 0, y: 0, z: -30 }, dimensions: { width: 20, height: 8, depth: 20 } },
+        { zone: 'C', products: ['Apples'], capacity: 120, position: { x: 30, y: 0, z: -30 }, dimensions: { width: 20, height: 8, depth: 20 } },
+        { zone: 'D', products: [], capacity: 60, position: { x: 0, y: 0, z: 0 }, dimensions: { width: 20, height: 8, depth: 20 } }
+      ];
+      res.json(layout);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to get 3D warehouse layout' });
+    }
+  });
+
+  app.post('/api/warehouse/ar-paths', authenticate, async (req, res) => {
+    try {
+      const { robotId, path, color, status } = req.body;
+      // In real implementation, this would store AR paths
+      res.json({ success: true, pathId: `path-${Date.now()}` });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to create AR path' });
+    }
+  });
+
+  // Security & Compliance Endpoints
+  app.post('/api/security/encrypt', authenticate, async (req, res) => {
+    try {
+      const { data, userId } = req.body;
+      const encryptedData = await securityService.encryptSensitiveData(data, userId);
+      res.json({ encryptedData });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to encrypt data' });
+    }
+  });
+
+  app.post('/api/security/decrypt', authenticate, async (req, res) => {
+    try {
+      const { encryptedData, userId } = req.body;
+      const decryptedData = await securityService.decryptSensitiveData(encryptedData, userId);
+      res.json({ decryptedData });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to decrypt data' });
+    }
+  });
+
+  app.post('/api/security/2fa/setup', authenticate, async (req, res) => {
+    try {
+      const { userId } = req.body;
+      const setup = await securityService.setupTOTP(userId);
+      res.json(setup);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to setup 2FA' });
+    }
+  });
+
+  app.post('/api/security/2fa/verify', authenticate, async (req, res) => {
+    try {
+      const { userId, token } = req.body;
+      const isValid = await securityService.verifyTOTP(userId, token);
+      res.json({ isValid });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to verify 2FA' });
+    }
+  });
+
+  app.post('/api/security/2fa/backup', authenticate, async (req, res) => {
+    try {
+      const { userId, backupCode } = req.body;
+      const isValid = await securityService.verifyBackupCode(userId, backupCode);
+      res.json({ isValid });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to verify backup code' });
+    }
+  });
+
+  app.post('/api/security/2fa/enable', authenticate, async (req, res) => {
+    try {
+      const { userId } = req.body;
+      const success = await securityService.enableTOTP(userId);
+      res.json({ success });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to enable 2FA' });
+    }
+  });
+
+  // GDPR Compliance Endpoints
+  app.get('/api/gdpr/export/:userId', authenticate, async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const userData = await securityService.exportUserData(parseInt(userId));
+      res.json(userData);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to export user data' });
+    }
+  });
+
+  app.delete('/api/gdpr/delete/:userId', authenticate, async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const success = await securityService.deleteUserData(parseInt(userId));
+      res.json({ success });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to delete user data' });
+    }
+  });
+
+  app.put('/api/gdpr/rectify/:userId', authenticate, async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { corrections } = req.body;
+      const success = await securityService.rectifyUserData(parseInt(userId), corrections);
+      res.json({ success });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to rectify user data' });
+    }
+  });
+
+  app.get('/api/audit-logs', authenticate, async (req, res) => {
+    try {
+      const { userId, action, startDate, endDate, limit } = req.query;
+      const logs = await securityService.getAuditLogs(
+        userId ? parseInt(userId as string) : undefined,
+        action as string,
+        startDate as string,
+        endDate as string,
+        limit ? parseInt(limit as string) : 100
+      );
+      res.json(logs);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to get audit logs' });
+    }
+  });
+
+  // PWA & Push Notification Endpoints
+  app.post('/api/push-subscriptions', authenticate, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { endpoint, keys } = req.body;
+      // Mock implementation - in real app, this would store in database
+      console.log('Push subscription created for user:', req.user!.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to create push subscription' });
+    }
+  });
+
+  app.delete('/api/push-subscriptions', authenticate, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { endpoint } = req.body;
+      // Mock implementation - in real app, this would remove from database
+      console.log('Push subscription deleted for user:', req.user!.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to delete push subscription' });
+    }
+  });
+
+  app.post('/api/notifications/send', authenticate, async (req, res) => {
+    try {
+      const { type, title, body, data, userIds } = req.body;
+      // Send push notifications to specified users
+      // This would integrate with the push notification service
+      res.json({ success: true, sentTo: userIds.length });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to send notifications' });
+    }
+  });
+
+  app.get('/api/notification-history', authenticate, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { userId } = req.query;
+      // Mock implementation - in real app, this would fetch from database
+      const history = [
+        {
+          id: 1,
+          userId: userId ? parseInt(userId as string) : req.user!.id,
+          title: 'Order Ready',
+          body: 'Your order is ready for pickup',
+          timestamp: new Date().toISOString(),
+          read: false
+        }
+      ];
+      res.json(history);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to get notification history' });
+    }
+  });
+
+  app.put('/api/notification-preferences', authenticate, async (req: AuthenticatedRequest, res) => {
+    try {
+      const preferences = req.body;
+      // Mock implementation - in real app, this would update database
+      console.log('Notification preferences updated for user:', req.user!.id, preferences);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to update notification preferences' });
+    }
+  });
+
+  // External System Integration Endpoints
+  app.get('/api/erp/products', authenticate, async (req, res) => {
+    try {
+      const products = await externalIntegrations.getERPProducts();
+      res.json(products);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch ERP products' });
+    }
+  });
+
+  app.post('/api/erp/purchase-orders', authenticate, async (req, res) => {
+    try {
+      const purchaseOrder = await externalIntegrations.createERPPurchaseOrder(req.body);
+      res.json(purchaseOrder);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to create ERP purchase order' });
+    }
+  });
+
+  app.post('/api/erp/sync-inventory', authenticate, async (req, res) => {
+    try {
+      await externalIntegrations.syncInventoryWithERP();
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to sync inventory with ERP' });
+    }
+  });
+
+  app.get('/api/weather/:location', authenticate, async (req, res) => {
+    try {
+      const { location } = req.params;
+      const weatherData = await externalIntegrations.getWeatherData(location);
+      res.json(weatherData);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch weather data' });
+    }
+  });
+
+  app.post('/api/weather/routes', authenticate, async (req, res) => {
+    try {
+      const { origin, destination } = req.body;
+      const weatherAwareRoute = await externalIntegrations.getWeatherAwareRoutes(origin, destination);
+      res.json(weatherAwareRoute);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to get weather-aware routes' });
+    }
+  });
+
+  app.post('/api/logistics/shipments', authenticate, async (req, res) => {
+    try {
+      const trackingNumber = await externalIntegrations.createLogisticsShipment(req.body);
+      res.json({ trackingNumber });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to create logistics shipment' });
+    }
+  });
+
+  app.get('/api/logistics/tracking/:trackingNumber', authenticate, async (req, res) => {
+    try {
+      const { trackingNumber } = req.params;
+      const trackingData = await externalIntegrations.getLogisticsTracking(trackingNumber);
+      res.json(trackingData);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to get logistics tracking' });
+    }
+  });
+
+  app.post('/api/logistics/update-order/:orderId', authenticate, async (req, res) => {
+    try {
+      const { orderId } = req.params;
+      const { trackingData } = req.body;
+      await externalIntegrations.updateOrderWithLogisticsStatus(parseInt(orderId), trackingData);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to update order with logistics status' });
+    }
+  });
+
+  app.post('/api/wms/sync', authenticate, async (req, res) => {
+    try {
+      await externalIntegrations.syncWMSChanges();
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to sync WMS changes' });
+    }
+  });
+
+  // Pub-Sub Messaging Endpoints
+  app.post('/api/pubsub/publish', authenticate, async (req, res) => {
+    try {
+      const { topic, payload } = req.body;
+      externalIntegrations.publishMessage(topic, payload);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to publish message' });
+    }
+  });
+
+  app.get('/api/pubsub/subscribe/:topic', authenticate, async (req, res) => {
+    try {
+      const { topic } = req.params;
+      // In real implementation, this would set up WebSocket subscription
+      res.json({ success: true, topic });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to subscribe to topic' });
     }
   });
 
