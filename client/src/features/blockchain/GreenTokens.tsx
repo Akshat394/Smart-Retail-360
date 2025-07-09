@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Leaf, TrendingUp, TrendingDown, Wallet, Send, RefreshCw, Award } from 'lucide-react';
+import { Leaf, TrendingUp, TrendingDown, Wallet, Send, RefreshCw, Award, Info, AlertTriangle } from 'lucide-react';
 import { useNotification } from '../../hooks/useNotification';
 
 interface TokenBalance {
@@ -29,10 +29,14 @@ const GreenTokens: React.FC = () => {
   const [burnAmount, setBurnAmount] = useState('');
   const [selectedOwner, setSelectedOwner] = useState('company');
   const { showNotification } = useNotification();
+  const [demoMode, setDemoMode] = useState(false);
+  const [leaderboard, setLeaderboard] = useState<{ owner: string; balance: number }[]>([]);
+  const [showOnboarding, setShowOnboarding] = useState(true);
 
   useEffect(() => {
     fetchBalance();
     fetchTransactions();
+    fetchLeaderboard();
   }, [selectedOwner]);
 
   const fetchBalance = async () => {
@@ -41,15 +45,35 @@ const GreenTokens: React.FC = () => {
       if (response.ok) {
         const data = await response.json();
         setBalance(data);
+      } else {
+        throw new Error('No real data');
       }
     } catch (error) {
       console.error('Failed to fetch balance:', error);
+      // Fallback to mock data
+      setBalance({
+        owner: selectedOwner,
+        balance: Math.floor(Math.random() * 200) + 50,
+        totalMinted: Math.floor(Math.random() * 300) + 100,
+        totalBurned: Math.floor(Math.random() * 50) + 10,
+        carbonOffset: Math.floor(Math.random() * 200) + 50
+      });
     }
   };
 
   const fetchTransactions = async () => {
     try {
-      // Mock transactions for demo
+      const response = await fetch(`/api/blockchain/green-tokens/transactions/${selectedOwner}`);
+      if (response.ok) {
+        const data = await response.json();
+        setTransactions(data.transactions);
+        setDemoMode(false);
+      } else {
+        throw new Error('No real data');
+      }
+    } catch (error) {
+      // Fallback to mock/demo mode
+      setDemoMode(true);
       const mockTransactions: TokenTransaction[] = [
         {
           id: '1',
@@ -80,10 +104,27 @@ const GreenTokens: React.FC = () => {
         }
       ];
       setTransactions(mockTransactions);
-    } catch (error) {
-      console.error('Failed to fetch transactions:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchLeaderboard = async () => {
+    try {
+      const response = await fetch('/api/blockchain/green-tokens/leaderboard');
+      if (response.ok) {
+        const data = await response.json();
+        setLeaderboard(data.leaderboard);
+      } else {
+        throw new Error('No real data');
+      }
+    } catch {
+      // Demo leaderboard
+      setLeaderboard([
+        { owner: 'company', balance: 175 },
+        { owner: 'warehouse-1', balance: 120 },
+        { owner: 'supplier-1', balance: 90 }
+      ]);
     }
   };
 
@@ -162,6 +203,40 @@ const GreenTokens: React.FC = () => {
         <div className="flex items-center gap-3 mb-6">
           <Leaf className="text-green-400 w-8 h-8" />
           <h2 className="text-2xl font-bold text-white">Green Tokens</h2>
+          <button
+            className="ml-2 text-gray-400 hover:text-green-400"
+            onClick={() => setShowOnboarding((v) => !v)}
+            title="Show onboarding info"
+          >
+            <Info className="w-5 h-5" />
+          </button>
+        </div>
+        {showOnboarding && (
+          <div className="bg-green-900/80 border border-green-500 rounded-lg p-4 mb-4 text-green-200 text-sm flex items-center gap-2">
+            <Info className="w-4 h-4" />
+            Green tokens are awarded for sustainable actions (e.g., low-CO₂ delivery). Mint tokens for achievements, burn for certifications. The leaderboard shows top holders. All actions are tracked for transparency.
+          </div>
+        )}
+        {demoMode && (
+          <div className="bg-yellow-900/80 border border-yellow-500 rounded-lg p-4 mb-4 text-yellow-200 text-sm flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4" />
+            Demo Mode: Data is simulated for demonstration purposes.
+          </div>
+        )}
+        {/* Leaderboard */}
+        <div className="bg-gray-800/80 rounded-xl p-6 border-2 border-purple-500/40 shadow-xl mb-6">
+          <h3 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
+            <Award className="w-5 h-5 text-purple-400" />
+            Green Token Leaderboard
+            <span className="ml-2 text-xs text-gray-400" title="Top holders of green tokens">?</span>
+          </h3>
+          <ol className="list-decimal ml-6 text-green-300">
+            {leaderboard.map((entry, i) => (
+              <li key={entry.owner} className="mb-1">
+                <span className="font-bold">{i + 1}. {entry.owner}</span> — <span className="text-green-200">{entry.balance} tokens</span>
+              </li>
+            ))}
+          </ol>
         </div>
 
         {/* Owner Selection */}

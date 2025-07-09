@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, real, jsonb, varchar } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, real, jsonb, varchar, index } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -107,6 +107,9 @@ export const clickCollectOrders = pgTable("click_collect_orders", {
   status: text("status").notNull().default("Pending"), // Pending, Ready, PickedUp, Cancelled
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  co2Emission: real("co2_emission").notNull().default(0), // Sustainability
+  energyUsage: real("energy_usage").notNull().default(0), // Sustainability
+  deliveryEfficiencyScore: real("delivery_efficiency_score").notNull().default(0), // Sustainability
 });
 
 export const warehouseTasks = pgTable("warehouse_tasks", {
@@ -152,6 +155,15 @@ export const customers = pgTable("customers", {
   greenScore: integer("green_score").notNull().default(0), // Sustainability score
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const iotReadings = pgTable("iot_readings", {
+  id: serial("id").primaryKey(),
+  zone: varchar("zone", { length: 8 }).notNull(),
+  temperature: real("temperature").notNull(),
+  humidity: real("humidity").notNull(),
+  vibration: real("vibration").notNull(),
+  timestamp: timestamp("timestamp").notNull().defaultNow(),
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({
@@ -254,6 +266,13 @@ export const insertCustomerSchema = createInsertSchema(customers).omit({
 
 export const selectCustomerSchema = createSelectSchema(customers);
 
+export const insertIotReadingSchema = createInsertSchema(iotReadings).omit({
+  id: true,
+  timestamp: true,
+});
+
+export const selectIotReadingSchema = createSelectSchema(iotReadings);
+
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type LoginUser = z.infer<typeof loginUserSchema>;
 export type User = typeof users.$inferSelect;
@@ -280,6 +299,8 @@ export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type Notification = typeof notifications.$inferSelect;
 export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
 export type Customer = typeof customers.$inferSelect;
+export type InsertIotReading = z.infer<typeof insertIotReadingSchema>;
+export type IotReading = typeof iotReadings.$inferSelect;
 
 export type IndianCity = { name: string; lat: number; lng: number };
 

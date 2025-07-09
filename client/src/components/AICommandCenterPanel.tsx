@@ -38,6 +38,9 @@ const AICommandCenterPanel: React.FC = () => {
   const [recentActions, setRecentActions] = useState<ActionLog[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
   const { showNotification } = useNotification();
+  const [erpLogs, setErpLogs] = useState<string[]>([]);
+  const [erpLoading, setErpLoading] = useState(false);
+  const [showLogs, setShowLogs] = useState(false);
 
   const fetchRecs = () => {
     setLoading(true);
@@ -52,8 +55,9 @@ const AICommandCenterPanel: React.FC = () => {
     fetchRecs();
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsHost = window.location.hostname;
-    const wsPort = window.location.port ? `:${window.location.port}` : '';
-    const wsUrl = `${wsProtocol}//${wsHost}${wsPort}/ws`;
+    // Use port 5000 explicitly since window.location.port might be undefined in development
+    const wsPort = window.location.port || '5000';
+    const wsUrl = `${wsProtocol}//${wsHost}:${wsPort}/ws`;
     wsRef.current = new WebSocket(wsUrl);
     wsRef.current.onmessage = (event) => {
       try {
@@ -135,6 +139,35 @@ const AICommandCenterPanel: React.FC = () => {
     }
   };
 
+  const handleErpSync = async (type: 'inventory' | 'orders') => {
+    setErpLoading(true);
+    try {
+      const res = await fetch(type === 'inventory' ? '/api/erp/sync-inventory' : '/api/erp/sync-orders', { method: 'POST' });
+      const result = await res.json();
+      if (res.ok && result.success) {
+        showNotification({ message: `ERP ${type === 'inventory' ? 'Inventory' : 'Order'} Sync Successful`, type: 'success', orderId: 0, customerName: '' });
+      } else {
+        showNotification({ message: result.error || 'ERP Sync Failed', type: 'error', orderId: 0, customerName: '' });
+      }
+    } catch (e: any) {
+      showNotification({ message: e.message || 'ERP Sync Failed', type: 'error', orderId: 0, customerName: '' });
+    }
+    setErpLoading(false);
+  };
+
+  const fetchErpLogs = async () => {
+    setErpLoading(true);
+    try {
+      const res = await fetch('/api/erp/sync-logs');
+      const result = await res.json();
+      setErpLogs(result.logs || []);
+      setShowLogs(true);
+    } catch {
+      showNotification({ message: 'Failed to fetch ERP sync logs', type: 'error', orderId: 0, customerName: '' });
+    }
+    setErpLoading(false);
+  };
+
   return (
     <div className="bg-gray-900 min-h-screen p-6">
       <div className="flex items-center gap-3 mb-6">
@@ -148,6 +181,41 @@ const AICommandCenterPanel: React.FC = () => {
           <Play className="w-4 h-4" /> Simulate Event
         </button>
       </div>
+      {/* ERP Sync Controls */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        <button
+          className="px-3 py-1 bg-green-700 text-white rounded hover:bg-green-600 text-sm font-semibold shadow"
+          onClick={() => handleErpSync('inventory')}
+          disabled={erpLoading}
+        >
+          {erpLoading ? <Loader2 className="w-4 h-4 animate-spin inline" /> : null} Sync ERP Inventory
+        </button>
+        <button
+          className="px-3 py-1 bg-green-700 text-white rounded hover:bg-green-600 text-sm font-semibold shadow"
+          onClick={() => handleErpSync('orders')}
+          disabled={erpLoading}
+        >
+          {erpLoading ? <Loader2 className="w-4 h-4 animate-spin inline" /> : null} Sync ERP Orders
+        </button>
+        <button
+          className="px-3 py-1 bg-gray-700 text-white rounded hover:bg-gray-600 text-sm font-semibold shadow"
+          onClick={fetchErpLogs}
+          disabled={erpLoading}
+        >
+          View ERP Sync Logs
+        </button>
+      </div>
+      {showLogs && (
+        <div className="bg-gray-800 rounded-xl p-4 mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-white font-semibold">ERP Sync Logs</div>
+            <button className="text-gray-400 hover:text-white" onClick={() => setShowLogs(false)}><XCircle className="w-5 h-5" /></button>
+          </div>
+          <ul className="text-xs text-gray-300 max-h-40 overflow-y-auto">
+            {erpLogs.length === 0 ? <li>No logs found.</li> : erpLogs.slice(-10).reverse().map((log, i) => <li key={i}>{log}</li>)}
+          </ul>
+        </div>
+      )}
       {actionMsg && (
         <div className="mb-4 px-4 py-2 bg-green-700 text-white rounded shadow-lg flex items-center gap-2 animate-fade-in">
           <CheckCircle className="w-5 h-5" /> {actionMsg}

@@ -3,6 +3,7 @@ import { EventEmitter } from 'events';
 import { db } from '@server/utils/db';
 import { inventory, clickCollectOrders, routes } from '@shared/schema';
 import { eq, sql } from 'drizzle-orm';
+import * as erpSimulator from '../../integrations/erp/simulator';
 
 export interface ERPProduct {
   id: string;
@@ -77,6 +78,8 @@ export interface PubSubMessage {
   messageId: string;
   correlationId?: string;
 }
+
+const isDemoERP = process.env.NODE_ENV === 'development' || process.env.DEMO_ERP === '1';
 
 class ExternalIntegrationsService extends EventEmitter {
   private weatherApiKey: string;
@@ -160,6 +163,10 @@ class ExternalIntegrationsService extends EventEmitter {
   }
 
   public async syncInventoryWithERP(): Promise<void> {
+    if (isDemoERP) {
+      await erpSimulator.syncInventoryWithERP();
+      return;
+    }
     try {
       // Get current inventory from our system
       const currentInventory = await db.select().from(inventory);
@@ -626,6 +633,15 @@ class ExternalIntegrationsService extends EventEmitter {
       recommendations: weatherImpact.recommendations,
       weatherModified: true
     };
+  }
+
+  // Add demo order sync for completeness
+  public async syncOrdersWithERP(): Promise<void> {
+    if (isDemoERP) {
+      await erpSimulator.syncOrdersWithERP();
+      return;
+    }
+    // Real implementation would go here
   }
 }
 

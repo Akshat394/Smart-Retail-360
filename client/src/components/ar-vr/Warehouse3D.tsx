@@ -1,54 +1,88 @@
 import React, { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader';
 import { apiService } from '../../services/api';
-
-interface WarehouseLayout {
-  zone: string;
-  products: string[];
-  capacity: number;
-  position: { x: number; y: number; z: number };
-  dimensions: { width: number; height: number; depth: number };
-}
+import { Warehouse as WarehouseIcon, Award } from 'lucide-react';
 
 interface Robot {
   id: string;
   position: { x: number; y: number; z: number };
   status: 'idle' | 'active' | 'maintenance';
-  currentTask?: string;
   health: number;
-}
-
-interface ARPath {
-  robotId: string;
-  path: THREE.Vector3[];
-  color: string;
-  status: 'planned' | 'active' | 'completed';
 }
 
 const Warehouse3D: React.FC = () => {
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
-  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
-  
-  const [warehouseLayout, setWarehouseLayout] = useState<WarehouseLayout[]>([]);
-  const [robots, setRobots] = useState<Robot[]>([]);
-  const [arPaths, setArPaths] = useState<ARPath[]>([]);
-  const [selectedZone, setSelectedZone] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'normal' | 'ar' | 'heatmap'>('normal');
+  const robotsRef = useRef<{ [id: string]: THREE.Mesh }>({});
+  const fbxModelUrl = '/uploads_files_2883707_warehouse6.fbx';
 
-  // Initialize Three.js scene
+  const [robots, setRobots] = useState<Robot[]>([]);
+  const [robotPaths, setRobotPaths] = useState<{ [id: string]: { path: { x: number; y: number }[]; progress: number } }>({});
+  const [co2Data, setCo2Data] = useState<any[]>([]);
+  const [iotZones, setIotZones] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [fbxError, setFbxError] = useState<string | null>(null);
+
+  // Add grid and pathfinding utilities
+  const GRID_SIZE = 20;
+  const GRID_SPACING = 4;
+  function gridToWorld(x: number, y: number) {
+    return { x: (x - GRID_SIZE / 2) * GRID_SPACING, z: (y - GRID_SIZE / 2) * GRID_SPACING };
+  }
+  function worldToGrid(x: number, z: number) {
+    return {
+      x: Math.round(x / GRID_SPACING + GRID_SIZE / 2),
+      y: Math.round(z / GRID_SPACING + GRID_SIZE / 2)
+    };
+  }
+  // Simple Dijkstra for open grid (no obstacles)
+  function dijkstra(start: [number, number], end: [number, number]) {
+    const queue: [number, number][] = [start];
+    const visited = new Set();
+    const prev: Record<string, [number, number] | null> = {};
+    prev[start.join(',')] = null;
+    while (queue.length) {
+      const [x, y] = queue.shift()!;
+      if (x === end[0] && y === end[1]) break;
+      for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= GRID_SIZE || ny >= GRID_SIZE) continue;
+        const key = `${nx},${ny}`;
+        if (!visited.has(key)) {
+          queue.push([nx, ny]);
+          visited.add(key);
+          prev[key] = [x, y];
+        }
+      }
+    }
+    // Reconstruct path
+    let path: [number, number][] = [];
+    let cur: [number, number] | null = end;
+    while (cur && prev[cur.join(',')]) {
+      path.push(cur);
+      cur = prev[cur.join(',')];
+    }
+    path.push(start);
+    return path.reverse();
+  }
+
   useEffect(() => {
     if (!mountRef.current) return;
+    setLoading(true);
+    setFbxError(null);
 
-    // Scene setup
+    let fbxLoaded = false;
+    let animationFrameId: number;
+
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x1a1a1a);
     sceneRef.current = scene;
 
-    // Camera setup
     const camera = new THREE.PerspectiveCamera(
       75,
       mountRef.current.clientWidth / mountRef.current.clientHeight,
@@ -58,463 +92,298 @@ const Warehouse3D: React.FC = () => {
     camera.position.set(50, 30, 50);
     cameraRef.current = camera;
 
-    // Renderer setup
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(mountRef.current.clientWidth, mountRef.current.clientHeight);
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    mountRef.current.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    mountRef.current.appendChild(renderer.domElement);
-
-    // Controls setup
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
-    controls.dampingFactor = 0.05;
     controlsRef.current = controls;
 
-    // Lighting
-    const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
-    scene.add(ambientLight);
-
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    directionalLight.position.set(50, 50, 50);
-    directionalLight.castShadow = true;
-    directionalLight.shadow.mapSize.width = 2048;
-    directionalLight.shadow.mapSize.height = 2048;
-    scene.add(directionalLight);
+    // Lights
+    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+    dirLight.position.set(30, 100, 40);
+    dirLight.castShadow = true;
+    scene.add(dirLight);
 
     // Floor
-    const floorGeometry = new THREE.PlaneGeometry(100, 100);
-    const floorMaterial = new THREE.MeshLambertMaterial({ 
-      color: 0x333333,
-      transparent: true,
-      opacity: 0.8
-    });
-    const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+    const floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(100, 100),
+      new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.3, roughness: 0.6 })
+    );
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     scene.add(floor);
 
-    // Grid helper
-    const gridHelper = new THREE.GridHelper(100, 20, 0x444444, 0x222222);
-    scene.add(gridHelper);
+    // Load FBX with error handling and timeout
+    const loader = new FBXLoader();
+    let fbxTimeout = setTimeout(() => {
+      if (!fbxLoaded) {
+        setFbxError('3D warehouse model took too long to load. Showing basic view.');
+        setLoading(false);
+      }
+    }, 7000); // 7 seconds max
+    try {
+      loader.load(
+        fbxModelUrl,
+        (fbx) => {
+          fbxLoaded = true;
+          clearTimeout(fbxTimeout);
+          fbx.scale.set(0.05, 0.05, 0.05);
+          fbx.traverse(child => {
+            if ((child as THREE.Mesh).isMesh) {
+              child.castShadow = true;
+              child.receiveShadow = true;
+            }
+          });
+          scene.add(fbx);
+          setLoading(false);
+        },
+        undefined,
+        (err) => {
+          setFbxError('Failed to load 3D warehouse model. Showing basic view.');
+          setLoading(false);
+        }
+      );
+    } catch (err) {
+      setFbxError('Error loading 3D warehouse model. Showing basic view.');
+      setLoading(false);
+    }
 
-    // Animation loop
+    // Animate robots
+    const clock = new THREE.Clock();
     const animate = () => {
-      requestAnimationFrame(animate);
-      controls.update();
-      renderer.render(scene, camera);
+      try {
+        animationFrameId = requestAnimationFrame(animate);
+        const time = clock.getElapsedTime();
+        Object.entries(robotsRef.current).forEach(([id, mesh], idx) => {
+          const robot = robots.find(r => r.id === id);
+          if (!robot) return;
+          const pathObj = robotPaths[id];
+          if (pathObj && pathObj.path.length > 1) {
+            // Progress along path
+            pathObj.progress = Math.min(pathObj.progress + 0.002, 1);
+            const pathIdx = Math.floor(pathObj.progress * (pathObj.path.length - 1));
+            const { x, y } = pathObj.path[pathIdx];
+            const world = gridToWorld(x, y);
+            mesh.position.x = world.x;
+            mesh.position.z = world.z;
+            mesh.position.y = 1 + Math.sin(time * 2 + idx) * 0.5;
+            mesh.rotation.y += 0.05;
+            // Draw path trail (as spheres, limit to 20 per robot)
+            if (scene && !mesh.userData.trailDrawn) {
+              pathObj.path.forEach((pt, i) => {
+                if (i % Math.ceil(pathObj.path.length / 20) === 0) { // max 20 spheres
+                  let co2 = co2Data[idx % co2Data.length]?.co2 || 0;
+                  let color = co2 < 7 ? 0x00ff00 : co2 < 12 ? 0xffff00 : 0xff0000;
+                  const sphere = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.2, 8, 8),
+                    new THREE.MeshBasicMaterial({ color })
+                  );
+                  const w = gridToWorld(pt.x, pt.y);
+                  sphere.position.set(w.x, 0.2, w.z);
+                  scene.add(sphere);
+                }
+              });
+              mesh.userData.trailDrawn = true;
+            }
+          } else if (robot.status === 'active') {
+            const radius = 10 + idx * 5;
+            mesh.position.x = Math.cos(time + idx) * radius;
+            mesh.position.z = Math.sin(time + idx) * radius;
+            mesh.position.y = 1 + Math.sin(time * 2 + idx) * 0.5;
+            mesh.rotation.y += 0.05;
+          } else if (robot.status === 'idle') {
+            mesh.position.y = 1 + Math.abs(Math.sin(time * 2 + idx)) * 1.5;
+          } else if (robot.status === 'maintenance') {
+            const intensity = 0.5 + 0.5 * Math.abs(Math.sin(time * 3));
+            const mat = mesh.material as THREE.MeshStandardMaterial;
+            mat.color.setRGB(intensity, 0, 0);
+          }
+        });
+        controls.update();
+        renderer.render(scene, camera);
+      } catch (err) {
+        setFbxError('Error in 3D rendering loop. Showing basic view.');
+        setLoading(false);
+      }
     };
     animate();
 
     // Cleanup
     return () => {
-      if (mountRef.current && renderer.domElement) {
+      if (renderer.domElement && mountRef.current) {
         mountRef.current.removeChild(renderer.domElement);
       }
       renderer.dispose();
+      clearTimeout(fbxTimeout);
+      cancelAnimationFrame(animationFrameId);
     };
-  }, []);
+  }, [robots, robotPaths, co2Data]);
 
-  // Load warehouse layout from database
-  useEffect(() => {
-    const loadWarehouseLayout = async () => {
-      try {
-        const layout = await apiService.getWarehouseLayout() as WarehouseLayout[];
-        setWarehouseLayout(layout);
-      } catch (error) {
-        console.error('Error loading warehouse layout:', error);
-        // Fallback to mock data
-        setWarehouseLayout([
-          {
-            zone: 'A',
-            products: ['Laptop', 'Smartphone'],
-            capacity: 100,
-            position: { x: -30, y: 0, z: -30 },
-            dimensions: { width: 20, height: 8, depth: 20 }
-          },
-          {
-            zone: 'B',
-            products: ['T-Shirt', 'Desk Chair'],
-            capacity: 80,
-            position: { x: 0, y: 0, z: -30 },
-            dimensions: { width: 20, height: 8, depth: 20 }
-          },
-          {
-            zone: 'C',
-            products: ['Apples'],
-            capacity: 120,
-            position: { x: 30, y: 0, z: -30 },
-            dimensions: { width: 20, height: 8, depth: 20 }
-          },
-          {
-            zone: 'D',
-            products: [],
-            capacity: 60,
-            position: { x: 0, y: 0, z: 0 },
-            dimensions: { width: 20, height: 8, depth: 20 }
-          }
-        ]);
-      }
-    };
-
-    loadWarehouseLayout();
-  }, []);
-
-  // Load robot data
+  // Load R1, R2, R3
   useEffect(() => {
     const loadRobots = async () => {
       try {
-        const robotData = await apiService.getRobotHealthData() as any[];
-        setRobots(robotData.map((robot: any) => ({
-          id: robot.robotId,
-          position: { x: Math.random() * 60 - 30, y: 1, z: Math.random() * 60 - 30 },
-          status: robot.health > 80 ? 'active' : robot.health > 50 ? 'idle' : 'maintenance',
-          health: robot.health
-        })));
-      } catch (error) {
-        console.error('Error loading robot data:', error);
-        // Fallback to mock data
+        const data = await apiService.getRobotHealthData() as any[];
+        const filtered = data.filter((r: any) => ['R1', 'R2', 'R3'].includes(r.robotId));
+        const mapped = filtered.map((r: any) => ({
+          id: r.robotId,
+          health: r.health,
+          status: (r.health > 80 ? 'active' : r.health > 50 ? 'idle' : 'maintenance') as 'active' | 'idle' | 'maintenance',
+          position: { x: Math.random() * 60 - 30, y: 1, z: Math.random() * 60 - 30 }
+        }));
+        setRobots(mapped);
+      } catch {
         setRobots([
-          { id: 'R1', position: { x: -20, y: 1, z: -20 }, status: 'active', health: 85 },
-          { id: 'R2', position: { x: 20, y: 1, z: -20 }, status: 'idle', health: 92 },
-          { id: 'R3', position: { x: 0, y: 1, z: 20 }, status: 'maintenance', health: 78 }
+          { id: 'R1', position: { x: -20, y: 1, z: -20 }, status: 'active', health: 90 },
+          { id: 'R2', position: { x: 20, y: 1, z: -20 }, status: 'idle', health: 70 },
+          { id: 'R3', position: { x: 0, y: 1, z: 20 }, status: 'maintenance', health: 45 },
         ]);
       }
     };
 
     loadRobots();
-    const interval = setInterval(loadRobots, 10000); // Update every 10 seconds
+    const interval = setInterval(loadRobots, 10000);
     return () => clearInterval(interval);
   }, []);
 
-  // Render warehouse zones
+  // On robots load, generate a path for each robot
   useEffect(() => {
-    if (!sceneRef.current) return;
-
-    // Clear existing zones
-    const existingZones = sceneRef.current.children.filter((child: THREE.Object3D) => 
-      (child as any).userData?.type === 'warehouse_zone'
-    );
-    existingZones.forEach(zone => sceneRef.current!.remove(zone));
-
-    // Create zone meshes
-    warehouseLayout.forEach((zone: WarehouseLayout) => {
-      const geometry = new THREE.BoxGeometry(
-        zone.dimensions.width,
-        zone.dimensions.height,
-        zone.dimensions.depth
-      );
-      
-      const material = new THREE.MeshLambertMaterial({
-        color: selectedZone === zone.zone ? 0x00ff00 : 0x666666,
-        transparent: true,
-        opacity: 0.7
-      });
-      
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.position.set(
-        zone.position.x,
-        zone.position.y + zone.dimensions.height / 2,
-        zone.position.z
-      );
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      (mesh as any).userData = { type: 'warehouse_zone', zoneId: zone.zone };
-      
-      // Add click event
-      (mesh as any).userData.onClick = () => setSelectedZone(zone.zone);
-      
-      sceneRef.current!.add(mesh);
-
-      // Add zone label
-      const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d')!;
-      canvas.width = 256;
-      canvas.height = 64;
-      context.fillStyle = '#ffffff';
-      context.fillRect(0, 0, canvas.width, canvas.height);
-      context.fillStyle = '#000000';
-      context.font = '24px Arial';
-      context.textAlign = 'center';
-      context.fillText(`Zone ${zone.zone}`, canvas.width / 2, canvas.height / 2);
-
-      const texture = new THREE.CanvasTexture(canvas);
-      const labelMaterial = new THREE.SpriteMaterial({ map: texture });
-      const label = new THREE.Sprite(labelMaterial);
-      label.position.set(
-        zone.position.x,
-        zone.position.y + zone.dimensions.height + 2,
-        zone.position.z
-      );
-      label.scale.set(10, 2.5, 1);
-      sceneRef.current!.add(label);
+    const newPaths: { [id: string]: { path: { x: number; y: number }[]; progress: number } } = {};
+    robots.forEach((robot, idx) => {
+      // Mock: start at (2+idx*5,2), end at (GRID_SIZE-3-idx*5,GRID_SIZE-3)
+      const start: [number, number] = [2 + idx * 5, 2];
+      const end: [number, number] = [GRID_SIZE - 3 - idx * 5, GRID_SIZE - 3];
+      const path = dijkstra(start, end).map(([x, y]) => ({ x, y }));
+      newPaths[robot.id] = { path, progress: 0 };
     });
-  }, [warehouseLayout, selectedZone]);
+    setRobotPaths(newPaths);
+  }, [robots]);
 
   // Render robots
   useEffect(() => {
     if (!sceneRef.current) return;
 
-    // Clear existing robots
-    const existingRobots = sceneRef.current.children.filter((child: THREE.Object3D) => 
-      (child as any).userData?.type === 'robot'
-    );
-    existingRobots.forEach(robot => sceneRef.current!.remove(robot));
+    Object.values(robotsRef.current).forEach(mesh => {
+      sceneRef.current!.remove(mesh);
+    });
+    robotsRef.current = {};
 
-    // Create robot meshes
-    robots.forEach((robot: Robot) => {
-      const geometry = new THREE.SphereGeometry(1, 16, 16);
-      const color = robot.status === 'active' ? 0x00ff00 : 
-                   robot.status === 'idle' ? 0xffff00 : 0xff0000;
-      const material = new THREE.MeshLambertMaterial({ color });
+    robots.forEach((robot, index) => {
+      const color =
+        robot.status === 'active' ? 0x00ff00 :
+        robot.status === 'idle' ? 0xffff00 :
+        0xff0000;
+
+      const geometry = new THREE.SphereGeometry(1.2, 32, 32);
+      const material = new THREE.MeshStandardMaterial({ color, metalness: 0.7, roughness: 0.3 });
       const mesh = new THREE.Mesh(geometry, material);
       mesh.position.set(robot.position.x, robot.position.y, robot.position.z);
       mesh.castShadow = true;
-      (mesh as any).userData = { type: 'robot', robotId: robot.id };
-      
+      mesh.userData = { type: 'robot', id: robot.id };
       sceneRef.current!.add(mesh);
+      robotsRef.current[robot.id] = mesh;
 
-      // Add robot label
+      // Label
       const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d')!;
       canvas.width = 256;
       canvas.height = 64;
-      context.fillStyle = '#ffffff';
-      context.fillRect(0, 0, canvas.width, canvas.height);
-      context.fillStyle = '#000000';
-      context.font = '16px Arial';
-      context.textAlign = 'center';
-      context.fillText(`${robot.id} (${robot.health}%)`, canvas.width / 2, canvas.height / 2);
+      const ctx = canvas.getContext('2d')!;
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, 256, 64);
+      ctx.fillStyle = '#000';
+      ctx.font = '16px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${robot.id} (${robot.health}%)`, 128, 40);
 
       const texture = new THREE.CanvasTexture(canvas);
-      const labelMaterial = new THREE.SpriteMaterial({ map: texture });
-      const label = new THREE.Sprite(labelMaterial);
-      label.position.set(robot.position.x, robot.position.y + 2, robot.position.z);
+      const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture }));
+      label.position.set(robot.position.x, robot.position.y + 2.5, robot.position.z);
       label.scale.set(8, 2, 1);
       sceneRef.current!.add(label);
     });
   }, [robots]);
 
-  // Render AR paths
   useEffect(() => {
-    if (!sceneRef.current || viewMode !== 'ar') return;
-
-    // Clear existing paths
-    const existingPaths = sceneRef.current.children.filter((child: THREE.Object3D) => 
-      (child as any).userData?.type === 'ar_path'
-    );
-    existingPaths.forEach(path => sceneRef.current!.remove(path));
-
-    // Create AR path lines
-    arPaths.forEach((path: ARPath) => {
-      if (path.path.length < 2) return;
-
-      const points = path.path;
-      const geometry = new THREE.BufferGeometry().setFromPoints(points);
-      const material = new THREE.LineBasicMaterial({ 
-        color: path.color,
-        linewidth: 3
-      });
-      const line = new THREE.Line(geometry, material);
-      (line as any).userData = { type: 'ar_path', robotId: path.robotId };
-      
-      sceneRef.current!.add(line);
-
-      // Add path markers
-      points.forEach((point: THREE.Vector3, index: number) => {
-        const markerGeometry = new THREE.SphereGeometry(0.3, 8, 8);
-        const markerMaterial = new THREE.MeshBasicMaterial({ color: path.color });
-        const marker = new THREE.Mesh(markerGeometry, markerMaterial);
-        marker.position.copy(point);
-        (marker as any).userData = { type: 'ar_path_marker', robotId: path.robotId, index };
-        
-        sceneRef.current!.add(marker);
-      });
-    });
-  }, [arPaths, viewMode]);
-
-  // Handle window resize
-  useEffect(() => {
-    const handleResize = () => {
-      if (!mountRef.current || !cameraRef.current || !rendererRef.current) return;
-
-      const width = mountRef.current.clientWidth;
-      const height = mountRef.current.clientHeight;
-
-      cameraRef.current.aspect = width / height;
-      cameraRef.current.updateProjectionMatrix();
-      rendererRef.current.setSize(width, height);
-    };
-
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    fetch('/api/delivery/co2').then(res => res.json()).then(setCo2Data).catch(() => setCo2Data([]));
   }, []);
 
-  // Handle mouse clicks for zone selection
   useEffect(() => {
-    if (!mountRef.current || !cameraRef.current || !rendererRef.current) return;
-
-    const handleClick = (event: MouseEvent) => {
-      const rect = rendererRef.current!.domElement.getBoundingClientRect();
-      const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-      const raycaster = new THREE.Raycaster();
-      raycaster.setFromCamera(new THREE.Vector2(x, y), cameraRef.current!);
-
-      const intersects = raycaster.intersectObjects(sceneRef.current!.children);
-      
-      for (const intersect of intersects) {
-        if ((intersect.object as any).userData?.type === 'warehouse_zone') {
-          setSelectedZone((intersect.object as any).userData.zoneId);
-          break;
-        }
-      }
-    };
-
-    mountRef.current.addEventListener('click', handleClick);
-    return () => mountRef.current?.removeEventListener('click', handleClick);
+    fetch('/api/iot/latest').then(res => res.json()).then(setIotZones).catch(() => setIotZones([]));
   }, []);
 
-  // Generate AR paths for robots
-  const generateARPaths = () => {
-    const newPaths: ARPath[] = robots.map(robot => {
-      const pathPoints: THREE.Vector3[] = [];
-      const startPoint = new THREE.Vector3(robot.position.x, robot.position.y, robot.position.z);
-      
-      // Generate a simple path to a random destination
-      const endPoint = new THREE.Vector3(
-        Math.random() * 60 - 30,
-        1,
-        Math.random() * 60 - 30
+  useEffect(() => {
+    if (!sceneRef.current) return;
+    // Remove old overlays
+    sceneRef.current.children = sceneRef.current.children.filter(obj => !obj.userData?.iotOverlay);
+    // Zone positions (mock/fixed)
+    const zonePositions: Record<'A' | 'B' | 'C', { x: number; z: number }> = { A: { x: -20, z: -20 }, B: { x: 0, z: 0 }, C: { x: 20, z: 20 } };
+    iotZones.forEach((zone: any) => {
+      const zoneId = zone.zone_id as keyof typeof zonePositions;
+      const pos = zonePositions[zoneId];
+      if (!pos) return;
+      let color = 0x00ff00;
+      if (zone.temperature > 28 || zone.vibration > 1.5) color = 0xff0000;
+      else if (zone.temperature > 24 || zone.vibration > 1.0) color = 0xffff00;
+      const box = new THREE.Mesh(
+        new THREE.BoxGeometry(8, 2, 8),
+        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.4 })
       );
-      
-      // Create intermediate points
-      const steps = 10;
-      for (let i = 0; i <= steps; i++) {
-        const t = i / steps;
-        const point = new THREE.Vector3().lerpVectors(startPoint, endPoint, t);
-        pathPoints.push(point);
-      }
-      
-      return {
-        robotId: robot.id,
-        path: pathPoints,
-        color: robot.status === 'active' ? '#00ff00' : '#ffff00',
-        status: 'planned'
-      };
+      box.position.set(pos.x, 1, pos.z);
+      box.userData.iotOverlay = true;
+      if (sceneRef.current) sceneRef.current.add(box);
     });
-    
-    setArPaths(newPaths);
-  };
+  }, [iotZones]);
 
   return (
-    <div className="bg-gray-900 min-h-screen p-6">
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-white mb-4">3D Warehouse Visualization</h2>
-        
-        <div className="flex gap-4 mb-4">
-          <button
-            className={`px-4 py-2 rounded ${viewMode === 'normal' ? 'bg-blue-600' : 'bg-gray-600'} text-white`}
-            onClick={() => setViewMode('normal')}
-          >
-            Normal View
-          </button>
-          <button
-            className={`px-4 py-2 rounded ${viewMode === 'ar' ? 'bg-green-600' : 'bg-gray-600'} text-white`}
-            onClick={() => setViewMode('ar')}
-          >
-            AR View
-          </button>
-          <button
-            className={`px-4 py-2 rounded ${viewMode === 'heatmap' ? 'bg-red-600' : 'bg-gray-600'} text-white`}
-            onClick={() => setViewMode('heatmap')}
-          >
-            Heatmap
-          </button>
-          <button
-            className="px-4 py-2 rounded bg-purple-600 text-white"
-            onClick={generateARPaths}
-          >
-            Generate AR Paths
-          </button>
-        </div>
-
-        {selectedZone && (
-          <div className="bg-gray-800 p-4 rounded-lg mb-4">
-            <h3 className="text-lg font-semibold text-white mb-2">Selected Zone: {selectedZone}</h3>
-            <div className="text-gray-300">
-              {warehouseLayout.find(zone => zone.zone === selectedZone)?.products.join(', ')}
-            </div>
-          </div>
-        )}
+    <div className="bg-gradient-to-br from-gray-900 via-gray-950 to-gray-900 min-h-screen p-6 relative flex flex-col items-center">
+      <div className="flex items-center gap-3 mb-4">
+        <span className="bg-blue-900/80 p-2 rounded-full border-2 border-blue-400 shadow-lg">
+          <WarehouseIcon className="w-8 h-8 text-blue-300" />
+        </span>
+        <h2 className="text-3xl font-extrabold text-white tracking-tight drop-shadow">Warehouse Operations</h2>
       </div>
-
-      <div 
-        ref={mountRef} 
-        className="w-full h-96 bg-gray-800 rounded-lg border border-gray-600"
+      {loading && (
+        <div className="absolute inset-0 flex items-center justify-center z-20 bg-gray-900/80">
+          <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-green-400"></div>
+          <span className="ml-4 text-white text-lg">Loading 3D warehouse...</span>
+        </div>
+      )}
+      {fbxError && !loading && (
+        <div className="absolute inset-0 flex items-center justify-center z-20">
+          <div className="bg-red-900/90 text-red-200 px-6 py-4 rounded-lg shadow-xl border border-red-400">
+            <strong>Notice:</strong> {fbxError}
+          </div>
+        </div>
+      )}
+      <div
+        ref={mountRef}
+        className="w-full max-w-5xl h-96 bg-gray-800/80 rounded-2xl border-2 border-blue-700 shadow-2xl mb-8"
         style={{ minHeight: '500px' }}
       />
-
-      <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-gray-800 p-4 rounded-lg">
-          <h3 className="text-lg font-semibold text-white mb-3">Warehouse Zones</h3>
-          <div className="space-y-2">
-            {warehouseLayout.map(zone => (
-              <div 
-                key={zone.zone}
-                className={`p-2 rounded cursor-pointer ${
-                  selectedZone === zone.zone ? 'bg-blue-600' : 'bg-gray-700'
-                }`}
-                onClick={() => setSelectedZone(zone.zone)}
-              >
-                <div className="text-white font-medium">Zone {zone.zone}</div>
-                <div className="text-gray-400 text-sm">
-                  {zone.products.length} products, {zone.capacity} capacity
-                </div>
-              </div>
-            ))}
-          </div>
+      <div className="absolute top-8 right-8 bg-gradient-to-br from-green-900/90 to-green-800/80 rounded-xl p-6 shadow-2xl border-2 border-green-500 z-10 w-80 max-w-full">
+        <div className="flex items-center gap-2 mb-2">
+          <Award className="w-6 h-6 text-green-300" />
+          <h3 className="text-lg font-bold text-green-200">CO₂ Leaderboard</h3>
         </div>
-
-        <div className="bg-gray-800 p-4 rounded-lg">
-          <h3 className="text-lg font-semibold text-white mb-3">Robot Status</h3>
-          <div className="space-y-2">
-            {robots.map(robot => (
-              <div key={robot.id} className="flex items-center justify-between p-2 bg-gray-700 rounded">
-                <div>
-                  <div className="text-white font-medium">{robot.id}</div>
-                  <div className="text-gray-400 text-sm">{robot.status}</div>
-                </div>
-                <div className={`w-3 h-3 rounded-full ${
-                  robot.status === 'active' ? 'bg-green-500' :
-                  robot.status === 'idle' ? 'bg-yellow-500' : 'bg-red-500'
-                }`} />
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="bg-gray-800 p-4 rounded-lg">
-          <h3 className="text-lg font-semibold text-white mb-3">AR Paths</h3>
-          <div className="space-y-2">
-            {arPaths.map(path => (
-              <div key={path.robotId} className="p-2 bg-gray-700 rounded">
-                <div className="text-white font-medium">{path.robotId}</div>
-                <div className="text-gray-400 text-sm">{path.status}</div>
-                <div 
-                  className="w-4 h-4 rounded mt-1"
-                  style={{ backgroundColor: path.color }}
-                />
-              </div>
-            ))}
-          </div>
-        </div>
+        <div className="text-sm text-white mb-1">Top Green Routes:</div>
+        <ul className="mb-2 space-y-1">
+          {co2Data.sort((a, b) => a.co2 - b.co2).slice(0, 3).map((d, i) => (
+            <li key={d.deliveryId} className="flex items-center gap-2 text-green-100 font-semibold">
+              <span className="inline-block w-6 text-center text-green-400 font-bold">{i + 1}.</span>
+              <span className="truncate flex-1">{d.route}</span>
+              <span className="bg-green-700/80 px-2 py-0.5 rounded text-xs font-mono">{d.co2} kg</span>
+            </li>
+          ))}
+        </ul>
+        <div className="text-xs text-green-200 font-semibold">CO₂ Saved: <span className="bg-green-700 px-2 py-1 rounded">{Math.max(0, 50 - (co2Data[0]?.co2 || 0)).toFixed(1)} kg</span></div>
       </div>
     </div>
   );
 };
 
-export default Warehouse3D; 
+export default Warehouse3D;

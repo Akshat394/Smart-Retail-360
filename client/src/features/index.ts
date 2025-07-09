@@ -35,4 +35,7 @@ export * from './edge';
 export * from './security';
 
 // Compliance Features
-export * from './compliance'; 
+export * from './compliance';
+
+// Vision Features
+export * from './vision'; 

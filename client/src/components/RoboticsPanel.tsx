@@ -116,8 +116,9 @@ const RoboticsPanel: React.FC<Props> = ({ filters }) => {
     const connectWebSocket = () => {
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsHost = window.location.hostname;
-      const wsPort = window.location.port ? `:${window.location.port}` : '';
-      const wsUrl = `${wsProtocol}//${wsHost}${wsPort}/ws`;
+      // Use port 5000 explicitly since window.location.port might be undefined in development
+      const wsPort = window.location.port || '5000';
+      const wsUrl = `${wsProtocol}//${wsHost}:${wsPort}/ws`;
       
       try {
         wsRef.current = new WebSocket(wsUrl);

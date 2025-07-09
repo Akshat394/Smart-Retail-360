@@ -31,7 +31,10 @@ export const useRealTimeData = () => {
   const connectWebSocket = useCallback(() => {
     try {
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const wsUrl = `${protocol}//${window.location.host}/ws`;
+      const wsHost = window.location.hostname;
+      // Use port 5000 explicitly since window.location.host might not include the port in development
+      const wsPort = window.location.port || '5000';
+      const wsUrl = `${protocol}//${wsHost}:${wsPort}/ws`;
       
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;

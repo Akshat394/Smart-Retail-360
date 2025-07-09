@@ -95,6 +95,24 @@ drone: { speed: 120km/h, costPerKm: $0.30, co2PerKm: 30g, maxDistance: 30km }
 - Proximity-based fulfillment center routing
 ```
 
+### **4.1. Advanced Channel Analytics** 📊
+- **Comprehensive Analytics Dashboard** with period-based filtering (24h, 7d, 30d)
+- **Channel Performance Comparison** with conversion rates, order volumes, and sustainability metrics
+- **Customer Journey Tracking** with repeat customer analysis and channel switching patterns
+- **Sustainability Reporting** with green delivery rates and carbon footprint tracking
+- **Real-time Mock Data Generation** for demo and testing purposes
+- **Interactive Visualizations** with sortable metrics and drill-down capabilities
+
+```typescript
+// Channel Analytics Features:
+- Period-based analytics (24h, 7d, 30d)
+- Channel performance comparison (conversion, volume, value, sustainability)
+- Customer journey insights with repeat purchase analysis
+- Peak hours detection and top products tracking
+- Sustainability metrics with green delivery rates
+- Real-time mock data for comprehensive demo scenarios
+```
+
 ### **5. Smart Warehousing & Robotics** 🤖
 - **IoT Sensor Monitoring**: Temperature, humidity, environmental conditions
 - **Robot Health Tracking** with maintenance alerts and uptime monitoring
@@ -164,6 +182,61 @@ drone: { speed: 120km/h, costPerKm: $0.30, co2PerKm: 30g, maxDistance: 30km }
 
 ---
 
+## 🆕 **Latest Updates & Enhancements**
+
+### **🌟 Major Feature Additions**
+
+#### **1. Enhanced Omnichannel Analytics Platform** 📈
+- **🎯 Channel Analytics Dashboard**: Comprehensive analytics with period-based filtering
+- **📊 Performance Comparison**: Sort by conversion rate, volume, value, or sustainability
+- **👥 Customer Journey Insights**: Repeat customer analysis and channel switching patterns
+- **🌱 Sustainability Reporting**: Green delivery rates and carbon footprint tracking
+- **🎮 Demo-Ready Mock Data**: Real-time data generation for comprehensive demonstrations
+- **⚡ Interactive UI**: Modern dark theme with smooth animations and responsive design
+
+#### **2. Advanced Digital Twin Simulator** 🎮
+- **🧮 Mathematical Supply Chain Models**: EOQ, safety stock, bullwhip effect calculations
+- **📈 Dynamic Parameter Response**: Real-time impact preview on parameter changes
+- **🎯 Risk-Adjusted Cost Modeling**: Advanced risk assessment and optimization
+- **📊 Capacity Utilization Analysis**: Lead time impact and dynamic pricing models
+- **🔍 Actionable Insights**: Detailed explanations of mathematical models used
+
+#### **3. Enhanced Video Analytics** 📹
+- **🎬 Demo Video Processing**: YOLO object detection on 4 sequential demo videos
+- **🔍 Real-time Detection**: Live object detection with confidence scores
+- **📊 Performance Metrics**: Processing time and detection accuracy tracking
+- **🌐 WebSocket Integration**: Real-time video stream updates
+- **🎯 Multi-Video Support**: Sequential playback with detection overlays
+
+#### **4. Improved Warehouse 3D Experience** 🏭
+- **🎨 Enhanced UI/UX**: Polished interface with better loading states
+- **⚡ Performance Optimization**: Faster rendering and reduced freezing
+- **🛡️ Error Handling**: Robust error handling and fallback mechanisms
+- **📱 Responsive Design**: Mobile-friendly warehouse visualization
+- **🎮 Interactive Elements**: Improved user interaction and feedback
+
+#### **5. WebSocket Infrastructure Overhaul** 🔌
+- **🔧 Port Configuration**: Fixed WebSocket connection issues with explicit port handling
+- **📡 Real-time Updates**: Enhanced real-time data synchronization
+- **🛡️ Connection Resilience**: Improved connection stability and error recovery
+- **⚡ Performance Optimization**: Faster data transmission and reduced latency
+
+### **🎨 UI/UX Improvements**
+- **🌙 Modern Dark Theme**: Consistent dark mode across all components
+- **🎭 Smooth Animations**: Framer Motion integration for fluid interactions
+- **📱 Mobile Responsiveness**: Optimized for all screen sizes
+- **🎯 Intuitive Navigation**: Improved sidebar organization and menu structure
+- **⚡ Performance Enhancements**: Faster loading times and smoother interactions
+
+### **🔧 Technical Enhancements**
+- **📊 Mock Data Generation**: Comprehensive demo data for all analytics features
+- **🛡️ Error Handling**: Robust error handling across all components
+- **📈 TypeScript Improvements**: Enhanced type safety and better code quality
+- **🔌 API Optimization**: Improved endpoint performance and response times
+- **📦 Bundle Optimization**: Reduced bundle sizes and improved loading performance
+
+---
+
 ## 🛠 **Technical Architecture**
 
 ### **Frontend Stack**
@@ -197,6 +270,84 @@ drone: { speed: 120km/h, costPerKm: $0.30, co2PerKm: 30g, maxDistance: 30km }
 - **Concurrent Development** with multiple services
 - **Environment Configuration** with dotenv
 - **Type Safety** across the entire stack
+
+---
+
+## 🔌 **API Endpoints**
+
+### **Omnichannel Analytics APIs**
+```typescript
+// Channel Analytics
+GET /api/omnichannel/analytics?period=7d&channel=online
+Response: {
+  period: string,
+  channelMetrics: ChannelMetrics[],
+  customerJourney: CustomerJourney,
+  summary: AnalyticsSummary
+}
+
+// Channel Performance Comparison
+GET /api/omnichannel/channels/performance?compare=conversion
+Response: {
+  comparison: string,
+  channels: ChannelPerformance[],
+  summary: PerformanceSummary
+}
+
+// Customer Journey Tracking
+GET /api/omnichannel/customer/:customerName/journey
+Response: {
+  customerName: string,
+  totalOrders: number,
+  preferredChannel: string,
+  sustainabilityScore: number,
+  orderHistory: OrderHistory[]
+}
+
+// Sustainability Report
+GET /api/omnichannel/sustainability?period=30d
+Response: {
+  period: string,
+  overview: SustainabilityOverview,
+  byChannel: ChannelSustainability[],
+  trends: SustainabilityTrends,
+  recommendations: string[]
+}
+```
+
+### **Digital Twin Simulation APIs**
+```typescript
+// Run Simulation
+POST /api/simulation/run
+Body: {
+  scenario: 'weather' | 'demand_spike' | 'supplier_outage' | 'peak_season',
+  parameters: SimulationParameters
+}
+Response: {
+  results: SimulationResults,
+  impact: ImpactMetrics,
+  recommendations: string[]
+}
+```
+
+### **Video Analytics APIs**
+```typescript
+// Process Demo Videos
+GET /api/vision/stream/demo
+Response: {
+  videos: VideoMetadata[],
+  detections: ObjectDetection[],
+  performance: ProcessingMetrics
+}
+
+// Real-time Video Stream
+WebSocket: ws://localhost:5000/ws
+Message: {
+  type: 'video_detection',
+  data: DetectionResult,
+  timestamp: string
+}
+```
 
 ---
 
@@ -344,6 +495,54 @@ POST /api/simulation/run
 
 ---
 
+## 🎮 **Demo Features & Quick Start**
+
+### **🌟 Interactive Demo Experience**
+
+#### **1. Channel Analytics Dashboard** 📊
+- **Navigate to**: Sidebar → "Channel Analytics"
+- **Features**:
+  - Toggle between 24h, 7d, 30d time periods
+  - Compare channels by conversion rate, volume, value, or sustainability
+  - View customer journey insights and peak hours
+  - Explore sustainability metrics and recommendations
+  - Real-time mock data updates for comprehensive demonstrations
+
+#### **2. Digital Twin Simulator** 🎮
+- **Navigate to**: Sidebar → "Digital Twin"
+- **Features**:
+  - Adjust parameters and see real-time impact preview
+  - Run weather event simulations with mathematical modeling
+  - Test demand spike scenarios with inventory risk assessment
+  - Simulate supplier outages with backup routing analysis
+  - View detailed mathematical model explanations
+
+#### **3. Video Analytics** 📹
+- **Navigate to**: Sidebar → "Video Analytics"
+- **Features**:
+  - Watch 4 demo videos with real-time YOLO object detection
+  - View detection confidence scores and bounding boxes
+  - Monitor processing performance metrics
+  - Experience WebSocket-powered real-time updates
+
+#### **4. Warehouse 3D Experience** 🏭
+- **Navigate to**: Sidebar → "Warehouse"
+- **Features**:
+  - Interactive 3D warehouse visualization
+  - Real-time robot health monitoring
+  - Environmental sensor data display
+  - Task assignment and completion tracking
+
+#### **5. AI Command Center** 🤖
+- **Navigate to**: Sidebar → "AI Command Center"
+- **Features**:
+  - Real-time AI recommendations
+  - One-click action execution
+  - Anomaly detection and alerts
+  - Performance tracking and logging
+
+---
+
 ## 🚀 **Getting Started**
 
 ### **Prerequisites**
@@ -465,3 +664,205 @@ Special thanks to:
 ---
 
 *SmartRetail360 represents the future of retail supply chain management, combining AI, real-time analytics, and sustainable practices to create a truly intelligent and efficient system.*
+
+## 🚀 Overview
+Smart-Retail-360 is a real-time, predictive, self-aware supply chain orchestration platform for modern retail. It combines IoT, AI, digital twins, robotics, and sustainability analytics to deliver a seamless, adaptive, and ultra-efficient supply chain experience.
+
+## 🏗️ Architecture
+- **client/** – React (TypeScript, Vite, Tailwind CSS, Three.js, Recharts)
+- **server/** – Node.js (TypeScript, Express, Drizzle ORM, PostgreSQL)
+- **ml_service/** – Python FastAPI microservice (TensorFlow, PyTorch)
+- **blockchain/** – Solidity-based traceability layer (optional)
+- **edge_device_sim/** – Python MQTT-based IoT simulator
+
+## ✨ Features Checklist
+- [x] **Realistic IoT + Robotics Integration**
+  - Simulated edge devices publish zone data via MQTT
+  - Node.js backend subscribes, stores, and exposes `/api/iot/latest` and `/api/iot/history`
+  - IoT dashboard with real-time sensor data, sparklines, and health status
+  - 3D warehouse overlays for high temp/vibration zones
+  - Animated robots (active, idle, maintenance)
+- [x] **Adaptive Personalization**
+  - ML-powered delivery mode recommendation (`/recommend_delivery_mode`)
+  - Orders panel shows suggested delivery mode badge with tooltip
+- [x] **Digital Twin Feedback Loop**
+  - Simulation engine logs all runs to `simulation_logs`
+  - `/api/simulation/history` returns scenario history
+  - Digital Twin UI with results, history, and Recharts
+- [x] **Robot Task Path Planning**
+  - Dijkstra pathfinding on 2D grid for each robot
+  - Animated robot paths and trails in 3D warehouse
+- [x] **Sustainability Insights**
+  - `/api/delivery/co2` returns CO₂ per delivery/route/zone
+  - 3D path trails color-coded by CO₂ (green/yellow/red)
+  - CO₂ leaderboard and "CO₂ Saved" badge
+  - IoT stress overlays for high-risk zones
+- [x] **Docs, UX, and Hackathon Polish**
+  - All endpoints and features documented
+  - Onboarding tooltips and journey mode outlined
+  - No compile/type/runtime errors
+  - Modular, maintainable codebase
+
+## ⚡ Quick Start
+
+### 1. Clone the repo
+```
+git clone <your-repo-url>
+cd Smart-Retail-360
+```
+
+### 2. Install dependencies
+```
+# In project root
+npm install
+# In client/
+cd client && npm install && cd ..
+# In ml_service/
+pip install -r ml_service/requirements.txt
+```
+
+### 3. Set up environment variables
+- Copy `.env.example` in each module to `.env` and fill in required values (DB, MQTT, etc.)
+
+### 4. Start all services
+```
+# From project root
+npm run start:all
+```
+- This will start backend, ML service, and frontend together.
+- For IoT simulation, run:
+```
+python edge_device_sim/zone_simulator.py
+```
+
+### 5. Access the app
+- Frontend: [http://localhost:3000](http://localhost:3000)
+- Backend API: [http://localhost:4000](http://localhost:4000)
+- ML Service: [http://localhost:8000](http://localhost:8000)
+
+## 🛠️ API Highlights
+- `GET /api/iot/latest` – Latest IoT sensor data per zone
+- `GET /api/iot/history?zone=A&limit=10` – IoT history for a zone
+- `POST /api/recommend/delivery-mode` – Get ML-powered delivery mode recommendation
+- `GET /api/simulation/history` – Digital twin simulation history
+- `GET /api/delivery/co2` – CO₂ emissions per delivery/route/zone
+
+## 🎬 Demo Flow
+1. **IoT Dashboard:** See real-time sensor data and zone health
+2. **3D Warehouse:** Watch robots animate and zones glow with IoT stress overlays
+3. **Orders Panel:** View AI-powered delivery mode suggestions
+4. **Digital Twin:** Run and compare supply chain simulations
+5. **Sustainability:** Explore CO₂ leaderboards and green delivery insights
+
+## 🧠 Hackathon-Ready
+- All features are implemented and demo-ready
+- Modular, robust, and visually impressive
+- Docs and onboarding are easy to finish with provided templates
+
+---
+**Good luck at the hackathon! Smart-Retail-360 is ready to win.**
+
+## Blockchain Features
+
+Smart-Retail-360 includes a robust blockchain-inspired module for supply chain transparency, green token incentives, and smart contract automation. This feature is designed for both demo and real-world extensibility.
+
+### Key Features
+- **Product Traceability:** Track a product's journey and verify authenticity using blockchain-style hashes.
+- **Green Tokens:** Mint, burn, and view green tokens awarded for sustainable actions (e.g., low-CO₂ delivery). Includes a leaderboard for top holders.
+- **Smart Contracts:** Automate supply chain actions (quality checks, carbon offset payments, compliance) and monitor contract status and execution history.
+
+### How to Use
+- **Navigate to the Blockchain section** in the app sidebar.
+- **Traceability Panel:** Enter a product ID (e.g., `PROD-12345`) to view its supply chain trace and verify authenticity.
+- **Green Tokens Panel:** View your token balance, mint/burn tokens, and see the leaderboard. Tooltips and onboarding banners explain each action.
+- **Smart Contracts Panel:** View, execute, and monitor smart contracts. Tooltips and onboarding banners guide you.
+
+### Demo Mode
+- If the backend is not connected to a real blockchain or data is unavailable, the UI will display a "Demo Mode" banner and use simulated data for a seamless demo experience.
+
+### API Endpoints
+- `/api/blockchain/trace/:productId` — Get product traceability
+- `/api/blockchain/green-tokens/mint` — Mint green tokens
+- `/api/blockchain/green-tokens/burn` — Burn green tokens
+- `/api/blockchain/green-tokens/balance/:owner` — Get token balance
+- `/api/blockchain/green-tokens/leaderboard` — Get leaderboard
+- `/api/blockchain/smart-contracts` — List smart contracts
+- `/api/blockchain/smart-contracts/executions` — List contract executions
+- `/api/blockchain/smart-contract/:contractId/execute` — Execute a contract
+- `/api/blockchain/authenticity/:productId` — Verify product authenticity
+
+### Testnet/Real Blockchain
+- The current implementation is blockchain-inspired and can be extended to use real smart contracts on a testnet (e.g., Polygon, Goerli) by updating backend logic and providing contract addresses/ABIs.
+
+### Security
+- All sensitive actions are proxied through the backend. No private keys are exposed in the frontend.
+
+---
+
+## 🧑‍💻 Developer Portal & Open API
+
+SmartRetail360 includes a full-featured Developer Portal for integrators, partners, and hackathon judges:
+
+- **API Docs:** Interactive Swagger UI at `/api-docs` (or via the sidebar Developer Portal tab)
+- **Try It:** Live endpoint tester for any API, with API key support
+- **API Key Management:** Generate, view, and copy API keys for different roles (admin, manager, user, guest)
+- **Plugin Registration:** Register and manage external plugins, see plugin IDs
+- **Logs:** View live SIEM and PII access logs for compliance and security
+
+**How to use:**
+1. Go to the Developer Portal tab in the sidebar
+2. Explore API docs, generate API keys, and test endpoints live
+3. Register plugins and view plugin/webhook logs
+4. Use `/docs/API.md` for a full endpoint reference
+
+---
+
+## 🏅 Sparkathon Theme Alignment
+
+| Theme Requirement                                 | SmartRetail360 Feature(s)                                      |
+|---------------------------------------------------|----------------------------------------------------------------|
+| Inventory optimization (AI/ML, ERP sync)          | AI Command Center, ML service, ERP/WMS/OMS integration         |
+| Real-time logistics and warehouse automation      | IoT dashboard, robotics, real-time analytics, digital twin     |
+| Sustainability (CO₂ tracking, green routing)      | Sustainability dashboards, green delivery, carbon offset, trace |
+| Adaptive last-mile delivery (autonomous, drone)   | Multi-modal delivery, route optimization, autonomous sim       |
+| Digital twin (scenario impact + visualization)    | Digital Twin Simulation, scenario stress testing, analytics    |
+| Compliance & threat detection                     | GDPR/CCPA endpoints, SIEM logs, PII access logs, rate limiting |
+| Open API & developer ecosystem                    | Developer Portal, API keys, plugin endpoints, Swagger UI       |
+
+---
+
+## 🧑‍⚖️ Demo Walkthrough (For Judges)
+
+1. **Login as Admin/Manager** (see credentials in setup or ask team)
+2. **Explore Dashboard:**
+   - View real-time KPIs, inventory, orders, and sustainability metrics
+   - Test AI Command Center (anomaly detection, restock, transfer)
+3. **IoT & Robotics:**
+   - Open IoT Dashboard for live zone telemetry and alerts
+   - View warehouse automation and robot health
+4. **Digital Twin:**
+   - Run scenario simulations (weather, demand spike, supplier outage)
+   - See real-time impact on cost, SLA, carbon
+5. **Blockchain:**
+   - View product traceability, green tokens, and smart contracts
+6. **Compliance:**
+   - Test GDPR/CCPA endpoints (delete/export user)
+   - View SIEM and PII logs in Developer Portal
+7. **Developer Portal:**
+   - Generate API keys, test endpoints, register plugins, view logs
+   - Use Swagger UI or `/docs/API.md` for full API reference
+8. **Mobile/Edge:**
+   - (If demoing mobile) Show real-time order/telemetry on Expo app
+   - Simulate edge device data with `edge_device_sim/`
+
+---
+
+## 📚 Full API Reference
+
+- **Interactive Docs:** [Swagger UI](/api-docs)
+- **Markdown Reference:** [`/docs/API.md`](./docs/API.md)
+- **OpenAPI JSON:** [`/api-docs.json`](http://localhost:5000/api-docs.json)
+
+For any questions, see the Support & Contact section above.
+
+---

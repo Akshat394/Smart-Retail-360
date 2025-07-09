@@ -275,6 +275,57 @@ class ApiService {
       body: JSON.stringify(preferences),
     });
   }
+
+  async recommendRoute(graph: any, start: string, end: string) {
+    return this.request('/recommend/route', {
+      method: 'POST',
+      body: JSON.stringify({ graph, start, end }),
+    });
+  }
+
+  async optimizeStock(supply: number[], demand: number[], cost_matrix: number[][]) {
+    return this.request('/optimize/stock', {
+      method: 'POST',
+      body: JSON.stringify({ supply, demand, cost_matrix }),
+    });
+  }
+
+  async getAdvancedSustainabilityMetrics() {
+    return this.request('/sustainability-metrics');
+  }
+
+  async exportSustainabilityMetricsCSV() {
+    const response = await fetch(`${API_BASE_URL}/sustainability-metrics/export`, {
+      method: 'GET',
+      headers: { 'Accept': 'text/csv' },
+      credentials: 'include',
+    });
+    if (!response.ok) throw new Error('Failed to export CSV');
+    return response.text();
+  }
+
+  async getERPProducts() {
+    return this.request('/erp/products');
+  }
+
+  async createERPPurchaseOrder(order: any) {
+    return this.request('/erp/purchase-orders', {
+      method: 'POST',
+      body: JSON.stringify(order),
+    });
+  }
+
+  async syncERPInventory() {
+    return this.request('/erp/sync-inventory', { method: 'POST' });
+  }
+
+  async syncERPOrders() {
+    return this.request('/erp/sync-orders', { method: 'POST' });
+  }
+
+  async getERPSyncLogs() {
+    return this.request('/erp/sync-logs');
+  }
 }
 
 export const apiService = new ApiService();

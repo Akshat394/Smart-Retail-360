@@ -45,7 +45,11 @@ const Notifications: React.FC = () => {
 
   // WebSocket for real-time notification popups
   useEffect(() => {
-    const ws = new WebSocket(`${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`);
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const wsHost = window.location.hostname;
+    // Use port 5000 explicitly since window.location.host might not include the port in development
+    const wsPort = window.location.port || '5000';
+    const ws = new WebSocket(`${wsProtocol}://${wsHost}:${wsPort}/ws`);
     wsRef.current = ws;
     ws.onmessage = (event: MessageEvent) => {
       try {

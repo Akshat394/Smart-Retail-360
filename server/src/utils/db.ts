@@ -13,3 +13,12 @@ if (!process.env.DATABASE_URL) {
 
 export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 export const db = drizzle({ client: pool, schema });
+
+// Add simulation_logs table definition for reference
+// CREATE TABLE simulation_logs (
+//   id SERIAL PRIMARY KEY,
+//   scenario VARCHAR(100),
+//   params JSONB,
+//   timestamp TIMESTAMP,
+//   impact JSONB
+// );

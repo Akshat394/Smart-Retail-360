@@ -31,6 +31,10 @@ const OrdersPanel: React.FC<Props> = ({ filters, search = '' }) => {
   const [dispatchedDroneOrders, setDispatchedDroneOrders] = useState<number[]>([]); // Persist dispatched orders
   const dispatchedDroneOrdersRef = useRef<number[]>([]);
   useEffect(() => { dispatchedDroneOrdersRef.current = dispatchedDroneOrders; }, [dispatchedDroneOrders]);
+  const [deliveryModes, setDeliveryModes] = useState<{ [orderId: number]: { mode: string; reason: string } | null }>({});
+  const [poModalOpen, setPoModalOpen] = useState(false);
+  const [poOrder, setPoOrder] = useState<Order | null>(null);
+  const [poLoading, setPoLoading] = useState(false);
 
   // Filter orders by sidebar filters
   const filteredOrders = useMemo(() => {
@@ -185,6 +189,63 @@ const OrdersPanel: React.FC<Props> = ({ filters, search = '' }) => {
     setTimeout(() => setToast(null), 2000);
   };
 
+  // Helper to get delivery recommendation for an order
+  async function fetchDeliveryRecommendation(order: Order) {
+    // Mock values for demo: infer from order or use defaults
+    const distance = 10; // TODO: calculate from warehouse to order.location
+    const priority = 'normal'; // or infer from order
+    const package_size = order.quantity <= 2 ? 'small' : order.quantity <= 5 ? 'medium' : 'large';
+    try {
+      const res = await fetch('/api/recommend/delivery-mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ distance, priority, package_size })
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
+
+  useEffect(() => {
+    paginatedOrders.forEach(order => {
+      if (!deliveryModes[order.id]) {
+        fetchDeliveryRecommendation(order).then(rec => {
+          setDeliveryModes(prev => ({ ...prev, [order.id]: rec }));
+        });
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paginatedOrders]);
+
+  const handleCreatePO = (order: Order) => {
+    setPoOrder(order);
+    setPoModalOpen(true);
+  };
+
+  const confirmCreatePO = async () => {
+    if (!poOrder) return;
+    setPoLoading(true);
+    try {
+      await apiService.createERPPurchaseOrder({
+        supplierId: poOrder.customerName,
+        items: [{ productId: poOrder.id, quantity: poOrder.quantity, unitCost: 100 }], // Use mock unitCost or fetch real
+        totalAmount: poOrder.quantity * 100,
+        expectedDelivery: new Date().toISOString().slice(0,10)
+      });
+      setPoModalOpen(false);
+      setPoOrder(null);
+      setPoLoading(false);
+      setToast({ message: 'Purchase order created successfully!', type: 'success' });
+      setTimeout(() => setToast(null), 2000);
+    } catch (e: any) {
+      setPoLoading(false);
+      setToast({ message: e.message || 'Failed to create purchase order', type: 'error' });
+      setTimeout(() => setToast(null), 2000);
+    }
+  };
+
   return (
     <div className="bg-gray-900 min-h-screen p-6">
       <h2 className="text-2xl font-bold text-white mb-6">Click-and-Collect Orders</h2>
@@ -272,6 +333,15 @@ const OrdersPanel: React.FC<Props> = ({ filters, search = '' }) => {
                   <td className="px-4 py-2">{order.customerName}</td>
                   <td className="px-4 py-2">
                     <span className="px-2 py-1 rounded-full text-xs font-semibold" style={{ backgroundColor: statusColors[order.status] || '#6366F1' }}>{order.status}</span>
+                    {/* Delivery Mode Badge */}
+                    {deliveryModes[order.id] && (
+                      <span
+                        className="ml-2 px-2 py-1 rounded-full bg-blue-700 text-white text-xs font-semibold cursor-help"
+                        title={deliveryModes[order.id]?.reason || ''}
+                      >
+                        {deliveryModes[order.id]?.mode}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-2">{order.channel}</td>
                   <td className="px-4 py-2">{new Date(order.createdAt).toLocaleString()}</td>
@@ -295,6 +365,9 @@ const OrdersPanel: React.FC<Props> = ({ filters, search = '' }) => {
                     {(order.status === 'Ready' || order.status === 'Pending') && dispatchedDroneOrders.includes(order.id) && (
                       <span className="text-xs text-green-400 font-semibold">Drone Dispatched</span>
                     )}
+                    <button className="px-2 py-1 bg-blue-700 text-white rounded hover:bg-blue-600 text-xs font-semibold shadow" onClick={() => handleCreatePO(order)}>
+                      Create PO
+                    </button>
                   </td>
                 </tr>
               ))
@@ -337,6 +410,35 @@ const OrdersPanel: React.FC<Props> = ({ filters, search = '' }) => {
           </select>
         </div>
       </div>
+      {poModalOpen && poOrder && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-xl p-8 w-full max-w-md shadow-xl">
+            <h3 className="text-lg text-white font-bold mb-4">Create Purchase Order</h3>
+            <div className="mb-3">
+              <div className="text-gray-300 mb-1">Product: <span className="font-semibold">{poOrder.productName}</span></div>
+              <div className="text-gray-300 mb-1">Supplier: <span className="font-semibold">{poOrder.customerName}</span></div>
+              <div className="text-gray-300 mb-1">Quantity: <span className="font-semibold">{poOrder.quantity}</span></div>
+              <div className="text-gray-300 mb-1">Expected Delivery: <span className="font-semibold">{new Date().toLocaleDateString()}</span></div>
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button
+                className="px-4 py-2 bg-blue-700 text-white rounded hover:bg-blue-600 font-semibold"
+                onClick={confirmCreatePO}
+                disabled={poLoading}
+              >
+                {poLoading ? 'Creating...' : 'Create PO'}
+              </button>
+              <button
+                className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500 font-semibold"
+                onClick={() => setPoModalOpen(false)}
+                disabled={poLoading}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -123,8 +123,9 @@ const VehicleMap: React.FC<VehicleMapProps> = ({ routeId }) => {
   useEffect(() => {
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsHost = window.location.hostname;
-    const wsPort = window.location.port ? `:${window.location.port}` : '';
-    const wsUrl = `${wsProtocol}//${wsHost}${wsPort}/ws`;
+    // Use port 5000 explicitly since window.location.port might be undefined in development
+    const wsPort = window.location.port || '5000';
+    const wsUrl = `${wsProtocol}//${wsHost}:${wsPort}/ws`;
     const ws = new WebSocket(wsUrl);
     ws.onmessage = (event) => {
       try {
@@ -155,12 +156,11 @@ const VehicleMap: React.FC<VehicleMapProps> = ({ routeId }) => {
 
   // WebSocket for real-time updates
   useEffect(() => {
-    // Use window.location.port if present, else default to 3000 (or your backend port)
+    // Use port 5000 explicitly since window.location.port might be undefined in development
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsHost = window.location.hostname;
-    // If your backend runs on a different port, set it here. Otherwise, use window.location.port
-    const wsPort = window.location.port ? `:${window.location.port}` : '';
-    const wsUrl = `${wsProtocol}//${wsHost}${wsPort}/ws`;
+    const wsPort = window.location.port || '5000';
+    const wsUrl = `${wsProtocol}//${wsHost}:${wsPort}/ws`;
     wsRef.current = new WebSocket(wsUrl);
     wsRef.current.onmessage = (event) => {
       try {

@@ -1,391 +1,463 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, ScatterChart, Scatter } from 'recharts';
-import { TrendingUp, Brain, Target, AlertTriangle, Activity, Zap } from 'lucide-react';
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  BarChart, Bar, AreaChart, Area, PieChart, Pie, Cell, ComposedChart
+} from 'recharts';
+import { TrendingUp, Brain, Target, AlertTriangle, Activity, Zap, Loader2 } from 'lucide-react';
 import { apiService } from '../services/api';
 
+interface ForecastData {
+  predictions: number[];
+  confidence_intervals?: {
+    lower_bound: number[];
+    upper_bound: number[];
+  };
+  model_performance?: Record<string, any>;
+  model_weights?: Record<string, number>;
+  timestamp: string;
+  model_type: string;
+}
+
+interface ModelStatus {
+  ensemble: {
+    is_fitted: boolean;
+    method: string;
+    weights?: Record<string, number>;
+    performance?: Record<string, any>;
+  };
+  arima: { is_fitted: boolean; model_type: string };
+  lstm: { is_fitted: boolean; model_type: string };
+  transformer: { is_fitted: boolean; model_type: string };
+}
+
 const Analytics: React.FC = () => {
-  const [selectedModel, setSelectedModel] = useState<'arima' | 'lstm' | 'ensemble'>('ensemble');
-  const [forecastHorizon, setForecastHorizon] = useState<7 | 14 | 30>(14);
-  const [anomalies, setAnomalies] = useState<any[]>([]);
-  // ML demo state
-  const [mlInput, setMLInput] = useState('');
-  const [mlPrediction, setMLPrediction] = useState<any>(null);
-  const [mlExplanation, setMLExplanation] = useState<any>(null);
-  const [mlError, setMLError] = useState<string | null>(null);
+  const [forecastData, setForecastData] = useState<ForecastData | null>(null);
+  const [modelStatus, setModelStatus] = useState<ModelStatus | null>(null);
+  const [selectedModel, setSelectedModel] = useState<string>('ensemble');
+  const [predictionSteps, setPredictionSteps] = useState<number>(30);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [historicalData, setHistoricalData] = useState<any[]>([]);
 
-  const forecastData = [
-    { date: '2024-01-01', actual: 1200, arima: 1180, lstm: 1220, ensemble: 1195, confidence: 95 },
-    { date: '2024-01-02', actual: 1350, arima: 1320, lstm: 1340, ensemble: 1335, confidence: 92 },
-    { date: '2024-01-03', actual: 1180, arima: 1200, lstm: 1160, ensemble: 1185, confidence: 89 },
-    { date: '2024-01-04', actual: 1420, arima: 1380, lstm: 1410, ensemble: 1398, confidence: 94 },
-    { date: '2024-01-05', actual: 1290, arima: 1310, lstm: 1280, ensemble: 1298, confidence: 91 },
-    { date: '2024-01-06', actual: 1560, arima: 1520, lstm: 1580, ensemble: 1545, confidence: 88 },
-    { date: '2024-01-07', actual: 1340, arima: 1360, lstm: 1320, ensemble: 1342, confidence: 93 },
-    // Future predictions
-    { date: '2024-01-08', arima: 1280, lstm: 1300, ensemble: 1290, confidence: 87 },
-    { date: '2024-01-09', arima: 1450, lstm: 1480, ensemble: 1465, confidence: 85 },
-    { date: '2024-01-10', arima: 1390, lstm: 1410, ensemble: 1400, confidence: 83 }
-  ];
+  // Generate synthetic historical data for demonstration
+  useEffect(() => {
+    const generateHistoricalData = () => {
+      const data = [];
+      const baseValue = 100;
+      const now = new Date();
+      
+      for (let i = 30; i >= 0; i--) {
+        const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+        const trend = 0.5 * i;
+        const seasonality = 10 * Math.sin(2 * Math.PI * i / 7); // Weekly pattern
+        const noise = (Math.random() - 0.5) * 5;
+        const value = Math.max(0, baseValue + trend + seasonality + noise);
+        
+        data.push({
+          date: date.toISOString().split('T')[0],
+          demand: Math.round(value),
+          inventory: Math.round(value * 1.2),
+          sales: Math.round(value * 0.9),
+          timestamp: date.getTime()
+        });
+      }
+      return data;
+    };
 
-  const modelPerformance = [
-    { model: 'ARIMA', mape: 8.4, rmse: 142.3, mae: 98.7, r2: 0.89 },
-    { model: 'LSTM', mape: 6.2, rmse: 128.9, mae: 87.4, r2: 0.92 },
-    { model: 'Ensemble', mape: 5.8, rmse: 118.6, mae: 82.1, r2: 0.94 }
-  ];
+    setHistoricalData(generateHistoricalData());
+  }, []);
 
-  const anomalyData = [
-    { date: '2024-01-01', demand: 1200, anomaly_score: 0.12, threshold: 0.8 },
-    { date: '2024-01-02', demand: 1350, anomaly_score: 0.34, threshold: 0.8 },
-    { date: '2024-01-03', demand: 1180, anomaly_score: 0.21, threshold: 0.8 },
-    { date: '2024-01-04', demand: 1420, anomaly_score: 0.67, threshold: 0.8 },
-    { date: '2024-01-05', demand: 1290, anomaly_score: 0.28, threshold: 0.8 },
-    { date: '2024-01-06', demand: 1560, anomaly_score: 0.89, threshold: 0.8 }, // Anomaly
-    { date: '2024-01-07', demand: 1340, anomaly_score: 0.43, threshold: 0.8 }
-  ];
+  // Fetch model status
+  useEffect(() => {
+    fetchModelStatus();
+  }, []);
 
-  const featureImportance = [
-    { feature: 'Historical Sales', importance: 0.34, color: '#3B82F6' },
-    { feature: 'Seasonality', importance: 0.28, color: '#10B981' },
-    { feature: 'Promotions', importance: 0.15, color: '#F59E0B' },
-    { feature: 'Weather', importance: 0.12, color: '#8B5CF6' },
-    { feature: 'Economic Indicators', importance: 0.08, color: '#EF4444' },
-    { feature: 'Competition', importance: 0.03, color: '#6B7280' }
-  ];
-
-  const getModelColor = (model: string) => {
-    switch (model) {
-      case 'arima': return '#F59E0B';
-      case 'lstm': return '#8B5CF6';
-      case 'ensemble': return '#10B981';
-      default: return '#3B82F6';
-    }
-  };
-
-  const handleMLPredict = async () => {
-    setMLError(null);
-    setMLPrediction(null);
+  const fetchModelStatus = async () => {
     try {
-      const nums = mlInput.split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n));
-      const result = await apiService.getMLPrediction(nums);
-      setMLPrediction(result);
-    } catch (e: any) {
-      setMLError(e.message || 'Prediction error');
+      const response = await fetch('http://localhost:8001/models/status');
+      if (response.ok) {
+        const status = await response.json();
+        setModelStatus(status);
+      }
+    } catch (error) {
+      console.error('Error fetching model status:', error);
     }
   };
 
-  const handleMLExplain = async () => {
-    setMLError(null);
-    setMLExplanation(null);
+  const generateForecast = async () => {
+    setIsLoading(true);
+    setError(null);
+
     try {
-      const nums = mlInput.split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n));
-      const result = await apiService.getMLExplanation(nums);
-      setMLExplanation(result);
-    } catch (e: any) {
-      setMLError(e.message || 'Explanation error');
+      // Extract demand data from historical data
+      const demandData = historicalData.map(item => item.demand);
+
+      const response = await fetch('http://localhost:8001/forecast', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          data: demandData,
+          steps: predictionSteps,
+          model_type: selectedModel,
+          return_confidence: true
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to generate forecast');
+      }
+
+      const data: ForecastData = await response.json();
+      setForecastData(data);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'An error occurred');
+    } finally {
+      setIsLoading(false);
     }
   };
+
+  const trainModel = async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const demandData = historicalData.map(item => item.demand);
+
+      const response = await fetch('http://localhost:8001/train', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          data: demandData,
+          model_type: selectedModel,
+          epochs: 50,
+          batch_size: 32
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to train model');
+      }
+
+      const result = await response.json();
+      alert(`Model training started: ${result.message}`);
+      
+      // Refresh model status after a delay
+      setTimeout(fetchModelStatus, 2000);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'An error occurred');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const prepareChartData = () => {
+    if (!forecastData) return [];
+
+    const data: any[] = [];
+    const startDate = new Date(historicalData[historicalData.length - 1]?.timestamp || Date.now());
+
+    // Add historical data
+    historicalData.forEach((item, index) => {
+      data.push({
+        date: item.date,
+        actual: item.demand,
+        predicted: null,
+        lower_bound: null,
+        upper_bound: null,
+        type: 'historical'
+      });
+    });
+
+    // Add forecast data
+    forecastData.predictions.forEach((prediction, index) => {
+      const forecastDate = new Date(startDate.getTime() + (index + 1) * 24 * 60 * 60 * 1000);
+      data.push({
+        date: forecastDate.toISOString().split('T')[0],
+        actual: null,
+        predicted: Math.round(prediction),
+        lower_bound: forecastData.confidence_intervals ? 
+          Math.round(forecastData.confidence_intervals.lower_bound[index]) : null,
+        upper_bound: forecastData.confidence_intervals ? 
+          Math.round(forecastData.confidence_intervals.upper_bound[index]) : null,
+        type: 'forecast'
+      });
+    });
+
+    return data;
+  };
+
+  const getModelStatusColor = (isFitted: boolean) => {
+    return isFitted ? 'bg-green-500' : 'bg-red-500';
+  };
+
+  const getModelStatusText = (isFitted: boolean) => {
+    return isFitted ? 'Trained' : 'Not Trained';
+  };
+
+  const chartData = prepareChartData();
 
   return (
-    <div className="p-6 space-y-6 bg-gray-900 min-h-screen">
-      {/* Header */}
-      <motion.div 
-        className="flex items-center justify-between"
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-      >
+    <div className="p-6 space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold text-white">Advanced Analytics & ML Forecasting</h1>
+        <div className="flex items-center space-x-2">
+          <Brain className="h-6 w-6 text-blue-400" />
+          <span className="text-sm text-gray-300">AI-Powered Insights</span>
+        </div>
+      </div>
+
+      {/* Model Status Dashboard */}
+      <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20 shadow-2xl">
+        <div className="flex items-center space-x-2 mb-4">
+          <Activity className="h-5 w-5 text-blue-400" />
+          <h2 className="text-xl font-semibold text-white">ML Model Status</h2>
+        </div>
         <div>
-          <h1 className="text-3xl font-bold text-white">Demand Forecasting & Analytics</h1>
-          <p className="text-gray-400 mt-1">AI-powered demand prediction with explainable ML models</p>
-        </div>
-        <div className="flex items-center space-x-4">
-          <select 
-            value={selectedModel}
-            onChange={(e) => setSelectedModel(e.target.value as 'arima' | 'lstm' | 'ensemble')}
-            className="bg-gray-800 border border-gray-700 text-white px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="arima">ARIMA Model</option>
-            <option value="lstm">LSTM Neural Network</option>
-            <option value="ensemble">Ensemble Model</option>
-          </select>
-          <select 
-            value={forecastHorizon}
-            onChange={(e) => setForecastHorizon(Number(e.target.value) as 7 | 14 | 30)}
-            className="bg-gray-800 border border-gray-700 text-white px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value={7}>7 Days</option>
-            <option value={14}>14 Days</option>
-            <option value={30}>30 Days</option>
-          </select>
-        </div>
-      </motion.div>
-
-      {/* Model Performance Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {modelPerformance.map((model, index) => (
-          <motion.div
-            key={model.model}
-            className={`bg-gray-800 rounded-xl p-6 border ${
-              selectedModel === model.model.toLowerCase() ? 'border-blue-500' : 'border-gray-700'
-            } hover:border-gray-600 transition-all duration-300`}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: index * 0.1 }}
-            whileHover={{ scale: 1.02 }}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center space-x-3">
-                <div className={`w-12 h-12 rounded-lg bg-gradient-to-r ${
-                  model.model === 'ARIMA' ? 'from-yellow-500 to-yellow-600' :
-                  model.model === 'LSTM' ? 'from-purple-500 to-purple-600' :
-                  'from-green-500 to-green-600'
-                } flex items-center justify-center`}>
-                  <Brain className="w-6 h-6 text-white" />
-                </div>
-                <h3 className="text-lg font-semibold text-white">{model.model}</h3>
-              </div>
-              {selectedModel === model.model.toLowerCase() && (
-                <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse" />
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-xs text-gray-400">MAPE</p>
-                <p className="text-lg font-bold text-white">{model.mape}%</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-400">R²</p>
-                <p className="text-lg font-bold text-white">{model.r2}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-400">RMSE</p>
-                <p className="text-sm text-gray-300">{model.rmse}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-400">MAE</p>
-                <p className="text-sm text-gray-300">{model.mae}</p>
-              </div>
-            </div>
-          </motion.div>
-        ))}
-      </div>
-
-      {/* Main Forecasting Chart */}
-      <motion.div
-        className="bg-gray-800 rounded-xl p-6 border border-gray-700"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.5, delay: 0.3 }}
-      >
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-xl font-semibold text-white">Demand Forecast vs Actual</h3>
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 bg-blue-500 rounded-full" />
-              <span className="text-sm text-gray-400">Actual</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: getModelColor(selectedModel) }} />
-              <span className="text-sm text-gray-400">{selectedModel.toUpperCase()}</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 bg-gray-500 rounded-full" />
-              <span className="text-sm text-gray-400">Confidence</span>
-            </div>
-          </div>
-        </div>
-        <div className="h-96">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={forecastData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis dataKey="date" stroke="#9CA3AF" fontSize={12} />
-              <YAxis stroke="#9CA3AF" fontSize={12} />
-              <Tooltip 
-                contentStyle={{ 
-                  backgroundColor: '#1F2937', 
-                  border: '1px solid #374151',
-                  borderRadius: '8px',
-                  color: '#F9FAFB'
-                }} 
-              />
-              <Line 
-                type="monotone" 
-                dataKey="actual" 
-                stroke="#3B82F6" 
-                strokeWidth={3}
-                dot={{ fill: '#3B82F6', strokeWidth: 2, r: 4 }}
-                connectNulls={false}
-              />
-              <Line 
-                type="monotone" 
-                dataKey={selectedModel} 
-                stroke={getModelColor(selectedModel)} 
-                strokeWidth={3}
-                dot={{ fill: getModelColor(selectedModel), strokeWidth: 2, r: 4 }}
-                strokeDasharray={forecastData.some(d => d.actual === undefined) ? "5 5" : "0"}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </motion.div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Anomaly Detection */}
-        <motion.div
-          className="bg-gray-800 rounded-xl p-6 border border-gray-700"
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.5, delay: 0.4 }}
-        >
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-xl font-semibold text-white">Anomaly Detection</h3>
-            <div className="flex items-center space-x-2">
-              <AlertTriangle className="w-5 h-5 text-red-400" />
-              <span className="text-sm text-red-400">1 Anomaly Detected</span>
-            </div>
-          </div>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <ScatterChart data={anomalyData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                <XAxis dataKey="date" stroke="#9CA3AF" fontSize={12} />
-                <YAxis dataKey="anomaly_score" stroke="#9CA3AF" fontSize={12} />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: '#1F2937', 
-                    border: '1px solid #374151',
-                    borderRadius: '8px',
-                    color: '#F9FAFB'
-                  }} 
-                />
-                <Scatter 
-                  dataKey="anomaly_score" 
-                  fill="#3B82F6"
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="threshold" 
-                  stroke="#EF4444" 
-                  strokeWidth={2}
-                  strokeDasharray="5 5"
-                />
-              </ScatterChart>
-            </ResponsiveContainer>
-          </div>
-        </motion.div>
-
-        {/* Feature Importance */}
-        <motion.div
-          className="bg-gray-800 rounded-xl p-6 border border-gray-700"
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.5, delay: 0.5 }}
-        >
-          <h3 className="text-xl font-semibold text-white mb-6">Feature Importance (SHAP Values)</h3>
-          <div className="space-y-4">
-            {featureImportance.map((feature, index) => (
-              <motion.div
-                key={feature.feature}
-                className="flex items-center justify-between"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.3, delay: 0.5 + index * 0.1 }}
-              >
-                <span className="text-sm text-gray-300 flex-1">{feature.feature}</span>
-                <div className="flex items-center space-x-3 flex-1">
-                  <div className="w-full h-2 bg-gray-700 rounded-full overflow-hidden">
-                    <motion.div 
-                      className="h-full rounded-full"
-                      style={{ backgroundColor: feature.color }}
-                      initial={{ width: 0 }}
-                      animate={{ width: `${feature.importance * 100}%` }}
-                      transition={{ duration: 1, delay: 0.5 + index * 0.1 }}
-                    />
+          {modelStatus ? (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {Object.entries(modelStatus).map(([model, status]) => (
+                <div key={model} className="flex items-center space-x-3 p-3 border border-white/20 rounded-lg bg-white/5">
+                  <div className={`w-3 h-3 rounded-full ${getModelStatusColor(status.is_fitted)}`} />
+                  <div>
+                    <p className="font-medium capitalize text-white">{model}</p>
+                    <p className="text-sm text-gray-300">{getModelStatusText(status.is_fitted)}</p>
+                    {model === 'ensemble' && status.weights && (
+                      <p className="text-xs text-gray-400">
+                        Weights: {Object.entries(status.weights).map(([k, v]) => `${k}: ${typeof v === 'number' ? v.toFixed(2) : String(v)}`).join(', ')}
+                      </p>
+                    )}
                   </div>
-                  <span className="text-sm text-white w-12 text-right">
-                    {(feature.importance * 100).toFixed(0)}%
-                  </span>
                 </div>
-              </motion.div>
-            ))}
+              ))}
+            </div>
+          ) : (
+            <p className="text-gray-300">Loading model status...</p>
+          )}
+        </div>
+      </div>
+
+      {/* Forecast Controls */}
+      <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20 shadow-2xl">
+        <h2 className="text-xl font-semibold text-white mb-4">Demand Forecasting</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Model Type</label>
+            <select 
+              value={selectedModel} 
+              onChange={(e) => setSelectedModel(e.target.value)}
+              className="w-full p-2 bg-white/10 border border-white/20 rounded-lg text-white"
+            >
+              <option value="ensemble">Ensemble (Recommended)</option>
+              <option value="arima">ARIMA</option>
+              <option value="lstm">LSTM</option>
+              <option value="transformer">Transformer</option>
+            </select>
           </div>
-          <div className="mt-6 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-            <div className="flex items-start space-x-3">
-              <Zap className="w-5 h-5 text-blue-400 mt-0.5" />
-              <div>
-                <p className="text-sm font-medium text-blue-400">Model Insight</p>
-                <p className="text-xs text-gray-400 mt-1">
-                  Historical sales patterns and seasonality are the strongest predictors, 
-                  accounting for 62% of the model's decision-making process.
-                </p>
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Prediction Steps</label>
+            <input
+              type="number"
+              value={predictionSteps}
+              onChange={(e) => setPredictionSteps(parseInt(e.target.value))}
+              min="1"
+              max="90"
+              className="w-full p-2 bg-white/10 border border-white/20 rounded-lg text-white"
+            />
+          </div>
+          <div className="flex items-end space-x-2">
+            <button 
+              onClick={generateForecast} 
+              disabled={isLoading}
+              className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white px-4 py-2 rounded-lg flex items-center justify-center"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Zap className="mr-2 h-4 w-4" />
+                  Generate Forecast
+                </>
+              )}
+            </button>
+            <button 
+              onClick={trainModel} 
+              disabled={isLoading}
+              className="bg-white/10 hover:bg-white/20 border border-white/20 text-white px-4 py-2 rounded-lg"
+            >
+              Train Model
+            </button>
+          </div>
+        </div>
+
+        {error && (
+          <div className="p-4 bg-red-500/20 border border-red-500/50 rounded-lg text-red-300">
+            {error}
+          </div>
+        )}
+      </div>
+
+      {/* Analytics Tabs */}
+      <div className="space-y-4">
+        <div className="flex space-x-1 bg-white/10 rounded-lg p-1">
+          <button className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium">
+            Demand Forecast
+          </button>
+          <button className="flex-1 bg-transparent text-gray-300 hover:text-white px-4 py-2 rounded-md text-sm">
+            Model Performance
+          </button>
+          <button className="flex-1 bg-transparent text-gray-300 hover:text-white px-4 py-2 rounded-md text-sm">
+            AI Insights
+          </button>
+        </div>
+
+        {/* Forecast Chart */}
+        <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20 shadow-2xl">
+          <h2 className="text-xl font-semibold text-white mb-4">Demand Forecasting with Confidence Intervals</h2>
+          <div>
+            {chartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={400}>
+                <ComposedChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                  <XAxis 
+                    dataKey="date" 
+                    tickFormatter={(value) => new Date(value).toLocaleDateString()}
+                    tick={{ fill: 'white' }}
+                  />
+                  <YAxis tick={{ fill: 'white' }} />
+                  <Tooltip 
+                    labelFormatter={(value) => new Date(value).toLocaleDateString()}
+                    formatter={(value, name) => [value, name]}
+                    contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', border: 'none', borderRadius: '8px' }}
+                  />
+                  <Legend />
+                  
+                  {/* Historical Data */}
+                  <Line 
+                    type="monotone" 
+                    dataKey="actual" 
+                    stroke="#8884d8" 
+                    strokeWidth={2}
+                    name="Historical Demand"
+                    dot={false}
+                  />
+                  
+                  {/* Forecast */}
+                  <Line 
+                    type="monotone" 
+                    dataKey="predicted" 
+                    stroke="#82ca9d" 
+                    strokeWidth={2}
+                    strokeDasharray="5 5"
+                    name="Forecasted Demand"
+                    dot={false}
+                  />
+                  
+                  {/* Confidence Interval */}
+                  {forecastData?.confidence_intervals && (
+                    <Area
+                      dataKey="upper_bound"
+                      stackId="confidence"
+                      stroke="none"
+                      fill="#82ca9d"
+                      fillOpacity={0.1}
+                      name="Confidence Interval"
+                    />
+                  )}
+                </ComposedChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-64 text-gray-400">
+                Generate a forecast to see the chart
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Model Performance */}
+        <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20 shadow-2xl">
+          <h2 className="text-xl font-semibold text-white mb-4">Model Performance Metrics</h2>
+          <div>
+            {forecastData?.model_performance ? (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {Object.entries(forecastData.model_performance).map(([model, metrics]) => (
+                  <div key={model} className="p-4 border border-white/20 rounded-lg bg-white/5">
+                    <h3 className="font-semibold capitalize mb-2 text-white">{model}</h3>
+                    {typeof metrics === 'object' && metrics !== null ? (
+                      <div className="space-y-1">
+                        {Object.entries(metrics).map(([metric, value]) => (
+                          <div key={metric} className="flex justify-between text-sm">
+                            <span className="text-gray-300">{metric.toUpperCase()}:</span>
+                            <span className="font-medium text-white">{typeof value === 'number' ? value.toFixed(4) : String(value)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-300">{String(metrics)}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-gray-300">Generate a forecast to see performance metrics</p>
+            )}
+          </div>
+        </div>
+
+        {/* AI Insights */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20 shadow-2xl">
+            <div className="flex items-center space-x-2 mb-4">
+              <TrendingUp className="h-5 w-5 text-green-400" />
+              <h3 className="text-lg font-semibold text-white">Trend Analysis</h3>
+            </div>
+            <div className="space-y-3">
+              <div className="flex justify-between">
+                <span className="text-gray-300">Current Trend:</span>
+                <span className="px-2 py-1 bg-green-500/20 text-green-400 rounded text-sm">Increasing</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-300">Seasonality:</span>
+                <span className="px-2 py-1 bg-blue-500/20 text-blue-400 rounded text-sm">Weekly Pattern</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-300">Forecast Accuracy:</span>
+                <span className="px-2 py-1 bg-purple-500/20 text-purple-400 rounded text-sm">95.2%</span>
               </div>
             </div>
           </div>
-        </motion.div>
+
+          <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20 shadow-2xl">
+            <div className="flex items-center space-x-2 mb-4">
+              <Brain className="h-5 w-5 text-purple-400" />
+              <h3 className="text-lg font-semibold text-white">AI Recommendations</h3>
+            </div>
+            <div className="space-y-3">
+              <div className="p-3 bg-blue-500/20 rounded-lg">
+                <p className="text-sm font-medium text-blue-300">Inventory Optimization</p>
+                <p className="text-xs text-blue-400">Increase stock by 15% for next week</p>
+              </div>
+              <div className="p-3 bg-green-500/20 rounded-lg">
+                <p className="text-sm font-medium text-green-300">Demand Spike Alert</p>
+                <p className="text-xs text-green-400">Prepare for 25% demand increase</p>
+              </div>
+              <div className="p-3 bg-yellow-500/20 rounded-lg">
+                <p className="text-sm font-medium text-yellow-300">Seasonal Adjustment</p>
+                <p className="text-xs text-yellow-400">Adjust pricing for peak season</p>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
-
-      {/* Model Comparison */}
-      <motion.div
-        className="bg-gray-800 rounded-xl p-6 border border-gray-700"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.6 }}
-      >
-        <h3 className="text-xl font-semibold text-white mb-6">Model Performance Comparison</h3>
-        <div className="h-64">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={modelPerformance}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis dataKey="model" stroke="#9CA3AF" fontSize={12} />
-              <YAxis stroke="#9CA3AF" fontSize={12} />
-              <Tooltip 
-                contentStyle={{ 
-                  backgroundColor: '#1F2937', 
-                  border: '1px solid #374151',
-                  borderRadius: '8px',
-                  color: '#F9FAFB'
-                }} 
-              />
-              <Bar dataKey="mape" fill="#3B82F6" name="MAPE %" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </motion.div>
-
-      {/* ML Demo Panel */}
-      <motion.div
-        className="bg-gray-800 rounded-xl p-6 border border-blue-700 mt-8"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.8 }}
-      >
-        <h3 className="text-xl font-semibold text-blue-400 mb-4">ML Model Demo</h3>
-        <div className="flex flex-col md:flex-row items-center gap-4 mb-4">
-          <input
-            type="text"
-            value={mlInput}
-            onChange={e => setMLInput(e.target.value)}
-            placeholder="Enter numbers, e.g. 1,2,3"
-            className="bg-gray-700 border border-gray-600 text-white px-3 py-2 rounded-lg w-full md:w-1/2"
-          />
-          <button
-            onClick={handleMLPredict}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold"
-          >Predict</button>
-          <button
-            onClick={handleMLExplain}
-            className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold"
-          >Explain</button>
-        </div>
-        {mlError && <div className="text-red-400 mb-2">{mlError}</div>}
-        {mlPrediction && (
-          <div className="text-blue-300 mb-2">Prediction: {JSON.stringify(mlPrediction.predictions)}</div>
-        )}
-        {mlExplanation && (
-          <div className="text-green-300 mb-2">Feature Importance: {JSON.stringify(mlExplanation.feature_importance)}</div>
-        )}
-      </motion.div>
     </div>
   );
 };

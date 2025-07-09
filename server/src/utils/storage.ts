@@ -35,6 +35,8 @@ import { warehouseTasks, type InsertWarehouseTask, type WarehouseTask } from '..
 import { microFulfillmentCenters, type InsertMicroFulfillmentCenter, type MicroFulfillmentCenter } from '../../../shared/schema';
 import { notifications, type InsertNotification, type Notification } from '../../../shared/schema';
 import { customers, type InsertCustomer, type Customer } from '../../../shared/schema';
+import fs from 'fs';
+import path from 'path';
 
 export interface IStorage {
   // User management
@@ -110,14 +112,23 @@ export interface IStorage {
   updateCustomer(id: number, updates: Partial<InsertCustomer>): Promise<Customer | undefined>;
 }
 
+function logPIIAccess({ accessorId, method, entity, entityId }: { accessorId?: number; method: string; entity: string; entityId: any }) {
+  const logPath = path.join(__dirname, '../../../logs/security/pii_access.log');
+  const line = JSON.stringify({ timestamp: new Date().toISOString(), accessorId, method, entity, entityId }) + '\n';
+  fs.mkdirSync(path.dirname(logPath), { recursive: true });
+  fs.appendFileSync(logPath, line);
+}
+
 export class DatabaseStorage implements IStorage {
   // User management
-  async getUser(id: number): Promise<User | undefined> {
+  async getUser(id: number, accessorId?: number): Promise<User | undefined> {
+    logPIIAccess({ accessorId, method: 'getUser', entity: 'User', entityId: id });
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user || undefined;
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
+  async getUserByUsername(username: string, accessorId?: number): Promise<User | undefined> {
+    logPIIAccess({ accessorId, method: 'getUserByUsername', entity: 'User', entityId: username });
     const [user] = await db.select().from(users).where(eq(users.username, username));
     return user || undefined;
   }
@@ -188,7 +199,8 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(drivers).orderBy(desc(drivers.createdAt));
   }
 
-  async getDriver(id: number): Promise<Driver | undefined> {
+  async getDriver(id: number, accessorId?: number): Promise<Driver | undefined> {
+    logPIIAccess({ accessorId, method: 'getDriver', entity: 'Driver', entityId: id });
     const [driver] = await db.select().from(drivers).where(eq(drivers.id, id));
     return driver || undefined;
   }
@@ -349,7 +361,8 @@ export class DatabaseStorage implements IStorage {
     return rows.map(s => ({ ...s, productIds: s.productIds ?? [] }));
   }
 
-  async getSupplier(id: number): Promise<Supplier | undefined> {
+  async getSupplier(id: number, accessorId?: number): Promise<Supplier | undefined> {
+    logPIIAccess({ accessorId, method: 'getSupplier', entity: 'Supplier', entityId: id });
     const [supplier] = await db.select().from(suppliersSchema).where(eq(suppliersSchema.id, id));
     return supplier ? { ...supplier, productIds: supplier.productIds ?? [] } : undefined;
   }
@@ -484,7 +497,8 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(customers).orderBy(desc(customers.greenScore));
   }
 
-  async getCustomerByName(name: string): Promise<Customer | undefined> {
+  async getCustomerByName(name: string, accessorId?: number): Promise<Customer | undefined> {
+    logPIIAccess({ accessorId, method: 'getCustomerByName', entity: 'Customer', entityId: name });
     const [customer] = await db.select().from(customers).where(eq(customers.name, name));
     return customer || undefined;
   }
@@ -496,6 +510,26 @@ export class DatabaseStorage implements IStorage {
 }
 
 export const storage = new DatabaseStorage();
+
+// Update inventory item by id
+export async function updateInventory(id: string, update: Partial<InsertInventory>): Promise<Inventory> {
+  const idNum = Number(id);
+  const [updated] = await db
+    .update(inventory)
+    .set(update)
+    .where(eq(inventory.id, idNum))
+    .returning();
+  if (!updated) throw new Error('Inventory item not found');
+  return updated;
+}
+
+// Delete inventory item by id
+export async function deleteInventory(id: string): Promise<void> {
+  const idNum = Number(id);
+  await db
+    .delete(inventory)
+    .where(eq(inventory.id, idNum));
+}
 
 // Dijkstra's algorithm for shortest path in the city graph
 export function dijkstraShortestPath(graph: Record<string, { to: string; distance: number }[]>, start: string, end: string): { path: string[]; distance: number } {

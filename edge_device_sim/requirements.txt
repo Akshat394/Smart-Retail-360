@@ -13,4 +13,7 @@ random
 math
 logging
 json
-time 
+time
+fastapi
+uvicorn
+websockets 

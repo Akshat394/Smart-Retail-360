@@ -22,7 +22,12 @@ import {
   Truck,
   Warehouse,
   AlertTriangle,
-  CheckCircle
+  CheckCircle,
+  ShoppingCart,
+  ClipboardList,
+  Code,
+  Camera,
+  Users
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
@@ -34,21 +39,25 @@ interface SidebarProps {
 const menuItems = [
   { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
   { id: 'ai-command', label: 'AI Command Center', icon: Zap },
-  { id: 'routes', label: 'Route Optimization', icon: Route },
   { id: 'analytics', label: 'Forecasting', icon: TrendingUp },
+  { id: 'inventory', label: 'Inventory', icon: Database },
+  { id: 'warehouse', label: 'Warehouse', icon: Warehouse }, // merged with AR/VR
+  { id: 'wms-dashboard', label: 'WMS Dashboard', icon: ClipboardList },
+  { id: 'orders', label: 'Orders', icon: Activity },
+  { id: 'omnichannel-analytics', label: 'Channel Analytics', icon: Users },
+  { id: 'route-optimization', label: 'Route Optimization', icon: Route }, // merged with logistics
+  { id: 'iot', label: 'IoT Dashboard', icon: Activity },
+  { id: 'robotics', label: 'Robotics', icon: Cpu },
+  { id: 'video-analytics', label: 'Video Analytics', icon: Camera },
   { id: 'digital-twin', label: 'Digital Twin', icon: Brain },
   { id: 'blockchain', label: 'Blockchain', icon: Link },
   { id: 'edge-computing', label: 'Edge Computing', icon: Cpu },
-  { id: 'security', label: 'Security', icon: Shield },
-  { id: 'compliance', label: 'Compliance', icon: FileText },
   { id: 'sustainability', label: 'Sustainability', icon: Leaf },
-  { id: 'warehouse', label: 'Warehouse', icon: Warehouse },
-  { id: 'logistics', label: 'Logistics', icon: Truck },
-  { id: 'inventory', label: 'Inventory', icon: Database },
-  { id: 'orders', label: 'Orders', icon: Activity },
-  { id: 'robotics', label: 'Robotics', icon: Cpu },
-  { id: 'ar-vr', label: 'AR/VR', icon: Eye },
-  { id: 'settings', label: 'Settings', icon: Settings }
+  { id: 'compliance', label: 'Compliance', icon: FileText },
+  { id: 'security', label: 'Security', icon: Shield },
+  { id: 'erp-products', label: 'ERP Products', icon: ShoppingCart },
+  { id: 'settings', label: 'Settings', icon: Settings },
+  { id: 'developer-portal', label: 'Developer Portal', icon: Code },
 ];
 
 const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
@@ -63,28 +72,28 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
         'dashboard', 'ai-command', 'routes', 'analytics', 'digital-twin', 
         'blockchain', 'edge-computing', 'security', 'compliance', 
         'sustainability', 'warehouse', 'logistics', 'inventory', 
-        'orders', 'robotics', 'ar-vr', 'settings'
+        'orders', 'omnichannel-analytics', 'robotics', 'video-analytics', 'ar-vr', 'settings', 'erp-products', 'wms-dashboard'
       ],
       manager: [
         'dashboard', 'ai-command', 'routes', 'analytics', 'digital-twin',
         'blockchain', 'edge-computing', 'security', 'compliance',
         'sustainability', 'warehouse', 'logistics', 'inventory',
-        'orders', 'robotics', 'ar-vr', 'settings'
+        'orders', 'omnichannel-analytics', 'robotics', 'video-analytics', 'ar-vr', 'settings', 'erp-products', 'wms-dashboard'
       ],
       operations: [
         'dashboard', 'ai-command', 'routes', 'warehouse', 'logistics',
-        'inventory', 'orders', 'robotics', 'settings'
+        'inventory', 'orders', 'omnichannel-analytics', 'robotics', 'video-analytics', 'settings'
       ],
       analyst: [
         'dashboard', 'ai-command', 'analytics', 'digital-twin',
-        'blockchain', 'sustainability', 'ar-vr'
+        'blockchain', 'sustainability', 'omnichannel-analytics', 'ar-vr'
       ],
       planner: [
         'dashboard', 'ai-command', 'analytics', 'digital-twin',
-        'routes', 'logistics', 'inventory', 'sustainability'
+        'routes', 'logistics', 'inventory', 'sustainability', 'omnichannel-analytics'
       ],
       viewer: [
-        'dashboard', 'ai-command', 'analytics', 'sustainability'
+        'dashboard', 'ai-command', 'analytics', 'sustainability', 'omnichannel-analytics'
       ]
     };
 

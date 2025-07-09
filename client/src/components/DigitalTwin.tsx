@@ -156,6 +156,19 @@ const DigitalTwin: React.FC = () => {
     }
   }, [selectedScenario]);
 
+  // Fetch simulation history from backend
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/simulation/history?limit=10');
+        const data = await res.json();
+        setHistory(data);
+      } catch {
+        setHistory([]);
+      }
+    })();
+  }, []);
+
   // Add to history on simulation complete
   useEffect(() => {
     if (simulationResult) {
@@ -171,6 +184,39 @@ const DigitalTwin: React.FC = () => {
 
   const handleParameterChange = (key: string, value: any) => {
     setParameters((prev: any) => ({ ...prev, [key]: value }));
+    
+    // Show real-time impact preview for parameter changes
+    const currentScenario = scenarios.find(s => s.id === selectedScenario);
+    if (currentScenario) {
+      const updatedParams = { ...parameters, [key]: value };
+      const impactPreview = calculateParameterImpact(selectedScenario, updatedParams);
+      showNotification({ 
+        message: `${key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ')} changed to ${value}${currentScenario.parameters[key]?.unit || ''}. Estimated impact: ${impactPreview}`, 
+        type: 'info', 
+        orderId: 0, 
+        customerName: '' 
+      });
+    }
+  };
+
+  // Calculate real-time impact preview for parameter changes
+  const calculateParameterImpact = (scenario: string, params: any) => {
+    switch (scenario) {
+      case 'demand_spike':
+        const demandImpact = params.increasePercentage > 50 ? 'High' : params.increasePercentage > 25 ? 'Medium' : 'Low';
+        return `${demandImpact} demand spike impact`;
+      case 'weather_event':
+        const weatherImpact = params.severity === 'high' ? 'Severe' : params.severity === 'medium' ? 'Moderate' : 'Minor';
+        return `${weatherImpact} weather disruption`;
+      case 'supplier_outage':
+        const outageImpact = params.impactPercentage > 60 ? 'Critical' : params.impactPercentage > 30 ? 'Significant' : 'Manageable';
+        return `${outageImpact} supplier impact`;
+      case 'peak_season':
+        const peakImpact = params.increasePercentage > 150 ? 'Extreme' : params.increasePercentage > 100 ? 'High' : 'Moderate';
+        return `${peakImpact} peak season demand`;
+      default:
+        return 'Parameter change detected';
+    }
   };
 
   const handleSimulation = async () => {
@@ -440,6 +486,43 @@ const DigitalTwin: React.FC = () => {
                       {(simulationResult.impact.inventory?.stockout_risk_percentage ?? 0).toFixed(2)}%
                     </span>
                   </div>
+                  
+                  {/* Enhanced Mathematical Metrics */}
+                  {simulationResult.impact.cost?.riskAdjusted && (
+                    <div className="flex items-center justify-between p-4 bg-blue-900/30 rounded-lg border border-blue-500/20">
+                      <span className="text-blue-300">Risk-Adjusted Cost</span>
+                      <span className="font-bold text-blue-300">
+                        ${(simulationResult.impact.cost.riskAdjusted).toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                  
+                  {simulationResult.impact.sla?.serviceLevel && (
+                    <div className="flex items-center justify-between p-4 bg-green-900/30 rounded-lg border border-green-500/20">
+                      <span className="text-green-300">Optimal Service Level</span>
+                      <span className="font-bold text-green-300">
+                        {((simulationResult.impact.sla.serviceLevel) * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                  )}
+                  
+                  {simulationResult.impact.inventory?.bullwhipEffect && (
+                    <div className="flex items-center justify-between p-4 bg-purple-900/30 rounded-lg border border-purple-500/20">
+                      <span className="text-purple-300">Bullwhip Effect</span>
+                      <span className="font-bold text-purple-300">
+                        {(simulationResult.impact.inventory.bullwhipEffect).toFixed(2)}x
+                      </span>
+                    </div>
+                  )}
+                  
+                  {simulationResult.impact.sla?.capacityUtilization && (
+                    <div className="flex items-center justify-between p-4 bg-orange-900/30 rounded-lg border border-orange-500/20">
+                      <span className="text-orange-300">Capacity Utilization</span>
+                      <span className="font-bold text-orange-300">
+                        {((simulationResult.impact.sla.capacityUtilization) * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                  )}
             </div>
                 {/* Charts for metrics */}
                 <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -495,32 +578,52 @@ const DigitalTwin: React.FC = () => {
 
           {/* Simulation History */}
           {history.length > 0 && (
-            <div className="mt-8">
-              <h4 className="text-lg font-semibold text-white mb-4">Recent Simulation Runs</h4>
+            <div className="mt-8 bg-gray-800 rounded-lg p-4">
+              <h3 className="text-lg font-semibold text-white mb-2">Simulation History</h3>
               <div className="overflow-x-auto">
-                <table className="min-w-full text-sm text-gray-300">
+                <table className="min-w-full text-xs text-gray-300 mb-4">
                   <thead>
                     <tr className="bg-gray-700">
-                      <th className="px-4 py-2 text-left">Time</th>
-                      <th className="px-4 py-2 text-left">Scenario</th>
-                      <th className="px-4 py-2 text-left">Summary</th>
-                      <th className="px-4 py-2 text-left">Cost</th>
-                      <th className="px-4 py-2 text-left">Stockout</th>
+                      <th className="px-2 py-1">Scenario</th>
+                      <th className="px-2 py-1">Timestamp</th>
+                      <th className="px-2 py-1">Cost Δ</th>
+                      <th className="px-2 py-1">CO₂ Δ</th>
+                      <th className="px-2 py-1">SLA Δ</th>
+                      <th className="px-2 py-1">Stockout Risk</th>
                     </tr>
                   </thead>
                   <tbody>
                     {history.map((h, i) => (
                       <tr key={i} className="border-b border-gray-700">
-                        <td className="px-4 py-2">{new Date(h.timestamp).toLocaleTimeString()}</td>
-                        <td className="px-4 py-2 capitalize">{h.scenario.replace('_', ' ')}</td>
-                        <td className="px-4 py-2">{h.summary?.description}</td>
-                        <td className="px-4 py-2">${h.impact.cost?.change?.toFixed(2)}</td>
-                        <td className="px-4 py-2">{h.impact.inventory?.stockout_risk_percentage?.toFixed(2)}%</td>
+                        <td className="px-2 py-1">{h.scenario || h.summary?.scenario}</td>
+                        <td className="px-2 py-1">{new Date(h.timestamp).toLocaleString()}</td>
+                        <td className="px-2 py-1">{h.impact?.cost?.change ?? h.impact?.cost_change ?? '-'}</td>
+                        <td className="px-2 py-1">{h.impact?.carbon?.change_kg ?? h.impact?.carbon_change ?? '-'}</td>
+                        <td className="px-2 py-1">{h.impact?.sla?.total_delay_minutes ?? h.impact?.sla_delay ?? '-'}</td>
+                        <td className="px-2 py-1">{h.impact?.inventory?.stockout_risk_percentage ?? '-'}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+              <ResponsiveContainer width="100%" height={200}>
+                <LineChart data={history.map(h => ({
+                  scenario: h.scenario || h.summary?.scenario,
+                  cost: h.impact?.cost?.change ?? 0,
+                  co2: h.impact?.carbon?.change_kg ?? 0,
+                  sla: h.impact?.sla?.total_delay_minutes ?? 0,
+                  stockout: h.impact?.inventory?.stockout_risk_percentage ?? 0,
+                  timestamp: h.timestamp
+                }))}>
+                  <XAxis dataKey="scenario" />
+                  <YAxis />
+                  <RechartsTooltip />
+                  <Line type="monotone" dataKey="cost" stroke="#f59e42" name="Cost Δ" />
+                  <Line type="monotone" dataKey="co2" stroke="#10b981" name="CO₂ Δ" />
+                  <Line type="monotone" dataKey="sla" stroke="#6366f1" name="SLA Δ" />
+                  <Line type="monotone" dataKey="stockout" stroke="#ef4444" name="Stockout Risk" />
+                </LineChart>
+              </ResponsiveContainer>
             </div>
           )}
 
@@ -551,6 +654,17 @@ const DigitalTwin: React.FC = () => {
               <div className="text-center text-gray-400">
                 <Zap className="w-16 h-16 mx-auto mb-4 text-gray-500" />
                 <p>Configure parameters and run a simulation to see the impact.</p>
+                <div className="mt-6 p-4 bg-gray-700/50 rounded-lg text-left text-sm">
+                  <h5 className="text-white font-semibold mb-2">Mathematical Models Used:</h5>
+                  <ul className="space-y-1 text-gray-300">
+                    <li>• <strong>EOQ Model:</strong> Economic Order Quantity optimization</li>
+                    <li>• <strong>Safety Stock:</strong> Service level-based inventory buffers</li>
+                    <li>• <strong>Bullwhip Effect:</strong> Demand amplification analysis</li>
+                    <li>• <strong>Risk-Adjusted Cost:</strong> Probability-weighted cost modeling</li>
+                    <li>• <strong>Capacity Utilization:</strong> Efficiency degradation modeling</li>
+                    <li>• <strong>Dynamic Pricing:</strong> Supply-demand elasticity analysis</li>
+                  </ul>
+                </div>
               </div>
             </div>
           )}

@@ -2,7 +2,7 @@ import { WebSocket } from 'ws';
 import { db } from '@server/utils/db';
 import { inventory, clickCollectOrders, warehouseTasks, routes } from '@shared/schema';
 import { eq, sql, desc, and, gte, lte } from 'drizzle-orm';
-import { getMLPrediction } from '@server/utils/mlService';
+
 
 export interface KPIMetrics {
   ordersInProgress: number;
@@ -10,28 +10,14 @@ export interface KPIMetrics {
   co2Emissions: number;
   costSavings: number;
   inventoryTurnover: number;
-  robotHealthScore: number;
-  predictiveMaintenanceAlerts: string[];
   timestamp: string;
-}
-
-export interface RobotHealthData {
-  robotId: string;
-  health: number;
-  uptime: number;
-  tasksCompleted: number;
-  lastMaintenance: Date;
-  predictedFailureDate: Date | null;
-  maintenanceUrgency: 'low' | 'medium' | 'high' | 'critical';
 }
 
 class RealTimeAnalyticsService {
   private clients: Set<WebSocket> = new Set();
   private kpiUpdateInterval: NodeJS.Timeout | null = null;
-  private robotHealthData: Map<string, RobotHealthData> = new Map();
 
   constructor() {
-    this.initializeRobotHealthTracking();
     this.startKPIBroadcasting();
   }
 
@@ -174,85 +160,20 @@ class RealTimeAnalyticsService {
     }
   }
 
-  private async predictRobotMaintenance(): Promise<RobotHealthData[]> {
-    try {
-      const robots = [
-        { id: 'R1', health: 85, uptime: 120, tasksCompleted: 150 },
-        { id: 'R2', health: 92, uptime: 180, tasksCompleted: 180 },
-        { id: 'R3', health: 78, uptime: 95, tasksCompleted: 120 }
-      ];
-
-      const predictions: RobotHealthData[] = [];
-
-      for (const robot of robots) {
-        // Use ML to predict failure date based on health metrics
-        const features = [
-          robot.health,
-          robot.uptime,
-          robot.tasksCompleted,
-          robot.health * robot.uptime / 1000, // health-uptime interaction
-          robot.tasksCompleted / robot.uptime // efficiency ratio
-        ];
-
-        try {
-          const prediction = await getMLPrediction(features, { model: 'regression' });
-          const daysToFailure = prediction.predictions?.[0] || 30;
-          
-          const predictedFailureDate = new Date();
-          predictedFailureDate.setDate(predictedFailureDate.getDate() + daysToFailure);
-
-          let maintenanceUrgency: 'low' | 'medium' | 'high' | 'critical' = 'low';
-          if (daysToFailure <= 7) maintenanceUrgency = 'critical';
-          else if (daysToFailure <= 14) maintenanceUrgency = 'high';
-          else if (daysToFailure <= 30) maintenanceUrgency = 'medium';
-
-          predictions.push({
-            robotId: robot.id,
-            health: robot.health,
-            uptime: robot.uptime,
-            tasksCompleted: robot.tasksCompleted,
-            lastMaintenance: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // 7 days ago
-            predictedFailureDate,
-            maintenanceUrgency
-          });
-
-          this.robotHealthData.set(robot.id, predictions[predictions.length - 1]);
-        } catch (error) {
-          console.error(`Error predicting maintenance for robot ${robot.id}:`, error);
-        }
-      }
-
-      return predictions;
-    } catch (error) {
-      console.error('Error predicting robot maintenance:', error);
-      return [];
-    }
-  }
-
   public async generateKPIMetrics(): Promise<KPIMetrics> {
     const [
       ordersInProgress,
       deliverySLA,
       co2Emissions,
       costSavings,
-      inventoryTurnover,
-      robotPredictions
+      inventoryTurnover
     ] = await Promise.all([
       this.getOrdersInProgress(),
       this.calculateDeliverySLA(),
       this.calculateCO2Emissions(),
       this.calculateCostSavings(),
-      this.calculateInventoryTurnover(),
-      this.predictRobotMaintenance()
+      this.calculateInventoryTurnover()
     ]);
-
-    const predictiveMaintenanceAlerts = robotPredictions
-      .filter(robot => robot.maintenanceUrgency === 'high' || robot.maintenanceUrgency === 'critical')
-      .map(robot => `Robot ${robot.robotId} needs maintenance (${robot.maintenanceUrgency} priority)`);
-
-    const robotHealthScore = robotPredictions.length > 0 
-      ? robotPredictions.reduce((sum, robot) => sum + robot.health, 0) / robotPredictions.length
-      : 0;
 
     return {
       ordersInProgress,
@@ -260,8 +181,6 @@ class RealTimeAnalyticsService {
       co2Emissions,
       costSavings,
       inventoryTurnover,
-      robotHealthScore,
-      predictiveMaintenanceAlerts,
       timestamp: new Date().toISOString()
     };
   }
@@ -269,7 +188,6 @@ class RealTimeAnalyticsService {
   private async sendKPIData(client: WebSocket) {
     try {
       const kpiData = await this.generateKPIMetrics();
-      
       if (client.readyState === WebSocket.OPEN) {
         client.send(JSON.stringify({
           type: 'kpi_update',
@@ -296,39 +214,6 @@ class RealTimeAnalyticsService {
     });
   }
 
-  private initializeRobotHealthTracking() {
-    // Initialize robot health data
-    this.robotHealthData.set('R1', {
-      robotId: 'R1',
-      health: 85,
-      uptime: 120,
-      tasksCompleted: 150,
-      lastMaintenance: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-      predictedFailureDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000),
-      maintenanceUrgency: 'medium'
-    });
-
-    this.robotHealthData.set('R2', {
-      robotId: 'R2',
-      health: 92,
-      uptime: 180,
-      tasksCompleted: 180,
-      lastMaintenance: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
-      predictedFailureDate: new Date(Date.now() + 25 * 24 * 60 * 60 * 1000),
-      maintenanceUrgency: 'low'
-    });
-
-    this.robotHealthData.set('R3', {
-      robotId: 'R3',
-      health: 78,
-      uptime: 95,
-      tasksCompleted: 120,
-      lastMaintenance: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
-      predictedFailureDate: new Date(Date.now() + 8 * 24 * 60 * 60 * 1000),
-      maintenanceUrgency: 'high'
-    });
-  }
-
   private startKPIBroadcasting() {
     // Broadcast KPI data every 10 seconds
     this.kpiUpdateInterval = setInterval(() => {
@@ -340,10 +225,6 @@ class RealTimeAnalyticsService {
     if (this.kpiUpdateInterval) {
       clearInterval(this.kpiUpdateInterval);
     }
-  }
-
-  public getRobotHealthData(): RobotHealthData[] {
-    return Array.from(this.robotHealthData.values());
   }
 }
 

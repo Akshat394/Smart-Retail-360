@@ -9,4 +9,11 @@ tensorflow
 matplotlib
 seaborn
 pytest
-pytest-cov 
+pytest-cov
+scipy
+opencv-python
+ultralytics
+Pillow
+requests
+python-multipart
+aiofiles 

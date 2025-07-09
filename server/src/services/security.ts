@@ -4,6 +4,8 @@ import { authenticator } from 'otplib';
 import { db } from '@server/utils/db';
 import { users } from '@shared/schema';
 import { eq, sql, desc } from 'drizzle-orm';
+import fs from 'fs';
+import path from 'path';
 
 export interface EncryptionKeys {
   publicKey: string;
@@ -281,6 +283,7 @@ class SecurityService {
 
   // GDPR Compliance
   public async exportUserData(userId: number): Promise<Record<string, any>> {
+    logSIEM({ userId, action: 'exportUserData' });
     try {
       // Get user data
       const user = await db.select().from(users).where(eq(users.id, userId)).limit(1);
@@ -336,6 +339,7 @@ class SecurityService {
   }
 
   public async deleteUserData(userId: number): Promise<boolean> {
+    logSIEM({ userId, action: 'deleteUserData' });
     try {
       // Start transaction
       await db.transaction(async (tx) => {
@@ -364,6 +368,7 @@ class SecurityService {
   }
 
   public async rectifyUserData(userId: number, corrections: Record<string, any>): Promise<boolean> {
+    logSIEM({ userId, action: 'rectifyUserData' });
     try {
       // Update user data
       await db.update(users)
@@ -576,6 +581,13 @@ class SecurityService {
       'Permissions-Policy': 'geolocation=(), microphone=(), camera=()'
     };
   }
+}
+
+function logSIEM({ userId, action }: { userId: number; action: string }) {
+  const logPath = path.join(__dirname, '../../../logs/security/siem.log');
+  const line = JSON.stringify({ timestamp: new Date().toISOString(), userId, action }) + '\n';
+  fs.mkdirSync(path.dirname(logPath), { recursive: true });
+  fs.appendFileSync(logPath, line);
 }
 
 export const securityService = new SecurityService(); 

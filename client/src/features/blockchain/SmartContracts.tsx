@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Play, Pause, Settings, Code, CheckCircle, AlertTriangle, Clock } from 'lucide-react';
+import { FileText, Play, Pause, Settings, Code, CheckCircle, AlertTriangle, Clock, Info } from 'lucide-react';
 import { useNotification } from '../../hooks/useNotification';
 
 interface SmartContract {
@@ -29,6 +29,8 @@ const SmartContracts: React.FC = () => {
   const [selectedContract, setSelectedContract] = useState<SmartContract | null>(null);
   const [loading, setLoading] = useState(true);
   const { showNotification } = useNotification();
+  const [demoMode, setDemoMode] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(true);
 
   useEffect(() => {
     fetchContracts();
@@ -37,6 +39,16 @@ const SmartContracts: React.FC = () => {
 
   const fetchContracts = async () => {
     try {
+      const response = await fetch('/api/blockchain/smart-contracts');
+      if (response.ok) {
+        const data = await response.json();
+        setContracts(data.contracts);
+        setDemoMode(false);
+      } else {
+        throw new Error('No real data');
+      }
+    } catch {
+      setDemoMode(true);
       // Mock data for demo
       const mockContracts: SmartContract[] = [
         {
@@ -85,8 +97,6 @@ const SmartContracts: React.FC = () => {
         }
       ];
       setContracts(mockContracts);
-    } catch (error) {
-      console.error('Failed to fetch contracts:', error);
     } finally {
       setLoading(false);
     }
@@ -94,6 +104,14 @@ const SmartContracts: React.FC = () => {
 
   const fetchExecutions = async () => {
     try {
+      const response = await fetch('/api/blockchain/smart-contracts/executions');
+      if (response.ok) {
+        const data = await response.json();
+        setExecutions(data.executions);
+      } else {
+        throw new Error('No real data');
+      }
+    } catch {
       // Mock execution data
       const mockExecutions: ContractExecution[] = [
         {
@@ -122,8 +140,6 @@ const SmartContracts: React.FC = () => {
         }
       ];
       setExecutions(mockExecutions);
-    } catch (error) {
-      console.error('Failed to fetch executions:', error);
     }
   };
 
@@ -185,8 +201,26 @@ const SmartContracts: React.FC = () => {
         <div className="flex items-center gap-3 mb-6">
           <FileText className="text-purple-400 w-8 h-8" />
           <h2 className="text-2xl font-bold text-white">Smart Contracts</h2>
+          <button
+            className="ml-2 text-gray-400 hover:text-purple-400"
+            onClick={() => setShowOnboarding((v) => !v)}
+            title="Show onboarding info"
+          >
+            <Info className="w-5 h-5" />
+          </button>
         </div>
-
+        {showOnboarding && (
+          <div className="bg-purple-900/80 border border-purple-500 rounded-lg p-4 mb-4 text-purple-200 text-sm flex items-center gap-2">
+            <Info className="w-4 h-4" />
+            Smart contracts automate supply chain actions (e.g., quality checks, carbon offset payments). You can view, execute, and monitor contract status. All actions are tracked for transparency.
+          </div>
+        )}
+        {demoMode && (
+          <div className="bg-yellow-900/80 border border-yellow-500 rounded-lg p-4 mb-4 text-yellow-200 text-sm flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4" />
+            Demo Mode: Data is simulated for demonstration purposes.
+          </div>
+        )}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Contracts List */}
           <div className="lg:col-span-2">

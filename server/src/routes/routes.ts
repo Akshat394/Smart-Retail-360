@@ -9,7 +9,7 @@ import { loginUserSchema, insertUserSchema, insertDriverSchema, insertRouteSchem
 import { dijkstraShortestPath } from '../utils/storage';
 import { runSimulation } from '../utils/simulationEngine';
 import { detectMetricAnomalies } from '../utils/anomalyDetection';
-import { getMLPrediction, getMLExplanation } from '../utils/mlService';
+import { getMLExplanation, getMLRouteRecommendation, getMLStockOptimization } from '../utils/mlService';
 import { optimizeRoute } from '../services/routeOptimizer';
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../utils/db';
@@ -18,43 +18,32 @@ import { realTimeAnalytics } from '../services/realTimeAnalytics';
 import { securityService } from '../services/security';
 import { externalIntegrations } from '../services/externalIntegrations';
 import { blockchainService } from '../../../blockchain/traceability';
+import axios from 'axios';
+import crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
+import { fileURLToPath } from 'url';
+import * as erpSimulator from '../../integrations/erp/simulator';
+import { iotReadings } from '../../../shared/schema';
+import openapiRouter from './openapi';
+import { generateApiKey, validateApiKey, enforceApiKeyRateLimit, getApiKeyInfo, incrementApiKeyUsage } from '../utils/apiKeyManager';
+import { updateInventory, deleteInventory } from '../utils/storage';
 
-// Import edge computing functions (these would be from the Python service)
-// For now, we'll create mock implementations
-const get_all_devices_status = async (): Promise<Record<string, any>> => {
-  // Mock implementation - in real app, this would call the Python edge service
-  return {
-    'device-001': {
-      device_id: 'device-001',
-      device_type: 'sensor',
-      location: 'Warehouse A',
-      is_online: true,
-      last_seen: new Date().toISOString(),
-      sensor_readings: {
-        temperature: 22.5,
-        humidity: 45.0,
-        vibration: 0.1,
-        power: 100.0
-      },
-      buffer_status: {
-        size: 5,
-        max_size: 1000,
-        utilization: 0.5
-      }
-    }
-  };
-};
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const BLOCKCHAIN_STATE_FILE = path.join(__dirname, '../../mock_blockchain_state.json');
 
-const get_device_status = async (deviceId: string) => {
-  const devices = await get_all_devices_status();
-  return devices[deviceId] || null;
-};
+const EDGE_API_BASE = 'http://localhost:8001';
 
-const trigger_emergency_coordination = async (clusterId: string, emergencyType: string, details: any) => {
-  // Mock implementation - in real app, this would trigger emergency coordination
-  console.log(`Emergency coordination triggered: ${emergencyType} in cluster ${clusterId}`, details);
-  return true;
-};
+// Edge computing API base URL for FastAPI service
+
+// Channel definitions for omnichannel analytics
+const CHANNELS = [
+  { value: 'online', label: 'Online', color: '#007bff' },
+  { value: 'in-store', label: 'In-Store', color: '#28a745' },
+  { value: 'mobile', label: 'Mobile', color: '#ffc107' },
+  { value: 'partner', label: 'Partner', color: '#6f42c1' },
+];
 
 // Helper: city-based alert type inference
 function inferCityAlertType(city: string | undefined) {
@@ -97,6 +86,55 @@ const clients = new Set<WebSocket>();
 // In-memory demo recommendations for simulation
 let demoRecommendations: any[] = [];
 let demoTimeout: NodeJS.Timeout | null = null;
+
+// --- IN-MEMORY MOCK BLOCKCHAIN STATE ---
+const mockGreenTokens = new Map(); // owner -> { balance, totalMinted, totalBurned, carbonOffset, transactions: [] }
+const mockContracts: any[] = [];
+const mockExecutions: any[] = [];
+const mockTraces = new Map(); // productId -> [trace events]
+
+function saveBlockchainState() {
+  const state = {
+    greenTokens: Array.from(mockGreenTokens.entries()),
+    contracts: mockContracts,
+    executions: mockExecutions,
+    traces: Array.from(mockTraces.entries())
+  };
+  fs.writeFileSync(BLOCKCHAIN_STATE_FILE, JSON.stringify(state, null, 2));
+}
+
+function loadBlockchainState() {
+  if (fs.existsSync(BLOCKCHAIN_STATE_FILE)) {
+    const state = JSON.parse(fs.readFileSync(BLOCKCHAIN_STATE_FILE, 'utf-8'));
+    mockGreenTokens.clear();
+    for (const [owner, data] of state.greenTokens) mockGreenTokens.set(owner, data);
+    mockContracts.length = 0; mockContracts.push(...state.contracts);
+    mockExecutions.length = 0; mockExecutions.push(...state.executions);
+    mockTraces.clear();
+    for (const [pid, arr] of state.traces) mockTraces.set(pid, arr);
+  }
+}
+
+// Load state on server start
+loadBlockchainState();
+
+function generateBlockHash(...args: any[]) {
+  return crypto.createHash('sha256').update(args.join('-') + Date.now()).digest('hex').slice(0, 32);
+}
+
+// Utility to estimate sustainability metrics
+function estimateSustainabilityMetrics(order: any) {
+  // For demo: use random or simple calculations
+  const distance = order.distance || 10; // fallback if not present
+  const co2 = +(distance * 0.18).toFixed(2); // 0.18 kg/km
+  const energy = +(co2 * 0.5).toFixed(2); // kWh
+  const efficiency = +(100 - (co2 + energy) / 50 * 100).toFixed(2); // out of 100
+  return { co2Emission: co2, energyUsage: energy, deliveryEfficiencyScore: efficiency };
+}
+
+// --- WebSocket Server for Inventory Updates ---
+const inventoryClients = new Set<any>();
+let wssInventory: any;
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Public authentication routes
@@ -585,7 +623,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/ml-predict', async (req, res) => {
     try {
       const { data, params } = req.body;
-      const result = await getMLPrediction(data, params);
+      const result = await getMLExplanation(data, params);
       res.json(result);
     } catch (e) {
       res.status(500).json({ error: 'ML service error' });
@@ -600,6 +638,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(result);
     } catch (e) {
       res.status(500).json({ error: 'ML explanation service error' });
+    }
+  });
+
+  // ML Route Recommendation endpoint
+  app.post('/api/recommend/route', async (req, res) => {
+    try {
+      const { graph, start, end } = req.body;
+      const result = await getMLRouteRecommendation(graph, start, end);
+      res.json(result);
+    } catch (e) {
+      res.status(500).json({ error: 'ML route recommendation error' });
+    }
+  });
+
+  // ML Stock Optimization endpoint
+  app.post('/api/optimize/stock', async (req, res) => {
+    try {
+      const { supply, demand, cost_matrix } = req.body;
+      const result = await getMLStockOptimization(supply, demand, cost_matrix);
+      res.json(result);
+    } catch (e) {
+      res.status(500).json({ error: 'ML stock optimization error' });
     }
   });
 
@@ -633,6 +693,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         quantity: chosen.quantity - orderData.quantity,
         location: chosen.location,
       });
+      // Calculate sustainability metrics
+      const sustainability = estimateSustainabilityMetrics(orderData);
       // Create order
       const newOrder = await storage.createClickCollectOrder({
         ...orderData,
@@ -640,7 +702,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         location: chosen.location,
         status: 'Pending',
         channel: orderData.channel || 'online',
-        greenDelivery: orderData.greenDelivery || false
+        greenDelivery: orderData.greenDelivery || false,
+        ...sustainability
       });
       // Broadcast to WebSocket clients
       clients.forEach((client) => {
@@ -665,6 +728,269 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(orders);
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch click-and-collect orders' });
+    }
+  });
+
+  // NEW: Omnichannel Analytics API
+  app.get('/api/omnichannel/analytics', async (req, res) => {
+    try {
+      const { period = '7d', channel } = req.query;
+      
+      // Generate mock data for demo
+      const mockOrders = generateMockOrders(period as string);
+      const orders = channel ? mockOrders.filter((order: any) => order.channel === channel) : mockOrders;
+      
+      // Calculate date range based on period
+      const now = new Date();
+      let startDate: Date;
+      switch (period) {
+        case '24h':
+          startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+          break;
+        case '7d':
+          startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          break;
+        case '30d':
+          startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+          break;
+        default:
+          startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      }
+
+      const filteredOrders = orders.filter((order: any) => new Date(order.createdAt) >= startDate);
+      
+      // Channel performance metrics
+      const channelMetrics = CHANNELS.filter(c => c.value).map(ch => {
+        const channelOrders = filteredOrders.filter(order => order.channel === ch.value);
+        const totalOrders = channelOrders.length;
+        const completedOrders = channelOrders.filter(order => order.status === 'PickedUp').length;
+        const conversionRate = totalOrders > 0 ? (completedOrders / totalOrders) * 100 : 0;
+        const totalValue = channelOrders.reduce((sum, order) => sum + (order.quantity * 100), 0);
+        const avgOrderValue = totalOrders > 0 ? totalValue / totalOrders : 0;
+        const carbonFootprint = channelOrders.reduce((sum, order) => sum + (order.co2Emission || 0), 0);
+        
+        return {
+          channel: ch.value,
+          label: ch.label,
+          color: ch.color,
+          totalOrders,
+          completedOrders,
+          conversionRate: Math.round(conversionRate * 100) / 100,
+          averageOrderValue: Math.round(avgOrderValue * 100) / 100,
+          carbonFootprint: Math.round(carbonFootprint * 100) / 100,
+          greenDeliveryCount: channelOrders.filter(order => order.greenDelivery).length
+        };
+      });
+
+      // Customer journey analytics
+      const customerJourney = {
+        totalCustomers: new Set(filteredOrders.map(order => order.customerName)).size,
+        repeatCustomers: calculateRepeatCustomers(filteredOrders),
+        averageOrdersPerCustomer: filteredOrders.length / new Set(filteredOrders.map(order => order.customerName)).size,
+        channelSwitching: calculateChannelSwitching(filteredOrders),
+        peakHours: calculatePeakHours(filteredOrders),
+        topProducts: calculateTopProducts(filteredOrders),
+        sustainabilityMetrics: {
+          totalGreenDeliveries: filteredOrders.filter(order => order.greenDelivery).length,
+          totalCarbonFootprint: filteredOrders.reduce((sum, order) => sum + (order.co2Emission || 0), 0),
+          averageEfficiencyScore: calculateAverageEfficiencyScore(filteredOrders)
+        }
+      };
+
+      res.json({
+        period,
+        channelMetrics,
+        customerJourney,
+        summary: {
+          totalOrders: filteredOrders.length,
+          totalValue: filteredOrders.reduce((sum, order) => sum + (order.quantity * 100), 0),
+          averageOrderValue: filteredOrders.length > 0 ? 
+            filteredOrders.reduce((sum, order) => sum + (order.quantity * 100), 0) / filteredOrders.length : 0,
+          overallConversionRate: filteredOrders.length > 0 ? 
+            (filteredOrders.filter(order => order.status === 'PickedUp').length / filteredOrders.length) * 100 : 0
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch omnichannel analytics' });
+    }
+  });
+
+  // NEW: Customer Journey Tracking API
+  app.get('/api/omnichannel/customer/:customerName/journey', async (req, res) => {
+    try {
+      const { customerName } = req.params;
+      const orders = await storage.getAllClickCollectOrders();
+      const customerOrders = orders.filter(order => order.customerName === customerName);
+      
+      if (customerOrders.length === 0) {
+        return res.status(404).json({ error: 'Customer not found' });
+      }
+
+      // Analyze customer journey
+      const journey = {
+        customerName,
+        totalOrders: customerOrders.length,
+        firstOrder: customerOrders.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())[0],
+        lastOrder: customerOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0],
+        preferredChannel: calculatePreferredChannel(customerOrders),
+        totalSpent: customerOrders.reduce((sum, order) => sum + (order.quantity * 100), 0),
+        averageOrderValue: customerOrders.reduce((sum, order) => sum + (order.quantity * 100), 0) / customerOrders.length,
+        sustainabilityScore: calculateCustomerSustainabilityScore(customerOrders),
+        orderHistory: customerOrders.map(order => ({
+          id: order.id,
+          productName: order.productName,
+          quantity: order.quantity,
+          channel: order.channel,
+          status: order.status,
+          createdAt: order.createdAt,
+          greenDelivery: order.greenDelivery,
+          co2Emission: order.co2Emission
+        }))
+      };
+
+      res.json(journey);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch customer journey' });
+    }
+  });
+
+  // NEW: Channel Performance Comparison API
+  app.get('/api/omnichannel/channels/performance', async (req, res) => {
+    try {
+      const { compare = 'conversion' } = req.query;
+      const orders = generateMockOrders('30d'); // Use 30 days of mock data
+      
+      const channelPerformance = CHANNELS.filter(c => c.value).map(channel => {
+        const channelOrders = orders.filter(order => order.channel === channel.value);
+        const totalOrders = channelOrders.length;
+        const completedOrders = channelOrders.filter(order => order.status === 'PickedUp').length;
+        const cancelledOrders = channelOrders.filter(order => order.status === 'Cancelled').length;
+        
+        // Calculate processing times
+        const processingTimes = channelOrders
+          .filter(order => order.updatedAt)
+          .map(order => {
+            const created = new Date(order.createdAt).getTime();
+            const updated = new Date(order.updatedAt!).getTime();
+            return (updated - created) / (1000 * 60 * 60); // hours
+          });
+        
+        const avgProcessingTime = processingTimes.length > 0 ? 
+          processingTimes.reduce((sum, time) => sum + time, 0) / processingTimes.length : 0;
+
+        return {
+          channel: channel.value,
+          label: channel.label,
+          color: channel.color,
+          metrics: {
+            totalOrders,
+            completedOrders,
+            cancelledOrders,
+            conversionRate: totalOrders > 0 ? (completedOrders / totalOrders) * 100 : 0,
+            cancellationRate: totalOrders > 0 ? (cancelledOrders / totalOrders) * 100 : 0,
+            averageProcessingTime: Math.round(avgProcessingTime * 100) / 100,
+            averageOrderValue: totalOrders > 0 ? 
+              channelOrders.reduce((sum, order) => sum + (order.quantity * 100), 0) / totalOrders : 0,
+            greenDeliveryRate: totalOrders > 0 ? 
+              (channelOrders.filter(order => order.greenDelivery).length / totalOrders) * 100 : 0,
+            carbonFootprint: channelOrders.reduce((sum, order) => sum + (order.co2Emission || 0), 0)
+          }
+        };
+      });
+
+      // Sort by comparison metric
+      channelPerformance.sort((a, b) => {
+        switch (compare) {
+          case 'conversion':
+            return b.metrics.conversionRate - a.metrics.conversionRate;
+          case 'volume':
+            return b.metrics.totalOrders - a.metrics.totalOrders;
+          case 'value':
+            return b.metrics.averageOrderValue - a.metrics.averageOrderValue;
+          case 'sustainability':
+            return b.metrics.greenDeliveryRate - a.metrics.greenDeliveryRate;
+          default:
+            return b.metrics.conversionRate - a.metrics.conversionRate;
+        }
+      });
+
+      res.json({
+        comparison: compare,
+        channels: channelPerformance,
+        summary: {
+          bestChannel: channelPerformance[0],
+          totalOrders: orders.length,
+          overallConversionRate: orders.length > 0 ? 
+            (orders.filter(order => order.status === 'PickedUp').length / orders.length) * 100 : 0
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch channel performance' });
+    }
+  });
+
+  // NEW: Sustainability Report API
+  app.get('/api/omnichannel/sustainability', async (req, res) => {
+    try {
+      const { period = '30d' } = req.query;
+      const orders = generateMockOrders(period as string);
+      
+      // Calculate date range
+      const now = new Date();
+      let startDate: Date;
+      switch (period) {
+        case '7d':
+          startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          break;
+        case '30d':
+          startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+          break;
+        case '90d':
+          startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+          break;
+        default:
+          startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      }
+
+      const filteredOrders = orders.filter(order => new Date(order.createdAt) >= startDate);
+      
+      const sustainabilityReport = {
+        period,
+        overview: {
+          totalOrders: filteredOrders.length,
+          greenDeliveries: filteredOrders.filter(order => order.greenDelivery).length,
+          greenDeliveryRate: filteredOrders.length > 0 ? 
+            (filteredOrders.filter(order => order.greenDelivery).length / filteredOrders.length) * 100 : 0,
+          totalCarbonFootprint: filteredOrders.reduce((sum, order) => sum + (order.co2Emission || 0), 0),
+          averageCarbonPerOrder: filteredOrders.length > 0 ? 
+            filteredOrders.reduce((sum, order) => sum + (order.co2Emission || 0), 0) / filteredOrders.length : 0,
+          totalEnergyUsage: filteredOrders.reduce((sum, order) => sum + (order.energyUsage || 0), 0),
+          averageEfficiencyScore: calculateAverageEfficiencyScore(filteredOrders)
+        },
+        byChannel: CHANNELS.filter(c => c.value).map(channel => {
+          const channelOrders = filteredOrders.filter(order => order.channel === channel.value);
+          return {
+            channel: channel.value,
+            label: channel.label,
+            totalOrders: channelOrders.length,
+            greenDeliveries: channelOrders.filter(order => order.greenDelivery).length,
+            greenDeliveryRate: channelOrders.length > 0 ? 
+              (channelOrders.filter(order => order.greenDelivery).length / channelOrders.length) * 100 : 0,
+            carbonFootprint: channelOrders.reduce((sum, order) => sum + (order.co2Emission || 0), 0),
+            energyUsage: channelOrders.reduce((sum, order) => sum + (order.energyUsage || 0), 0)
+          };
+        }),
+        trends: {
+          dailyCarbonFootprint: calculateDailyTrends(filteredOrders, 'co2Emission'),
+          dailyGreenDeliveryRate: calculateDailyTrends(filteredOrders, 'greenDelivery'),
+          topSustainableProducts: calculateSustainableProducts(filteredOrders)
+        },
+        recommendations: generateSustainabilityRecommendations(filteredOrders)
+      };
+
+      res.json(sustainabilityReport);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch sustainability report' });
     }
   });
 
@@ -1060,14 +1386,78 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const totalOrders = orders.length;
       const greenOrders = orders.filter(o => o.greenDelivery).length;
       const co2Saved = orders.reduce((sum, o) => sum + (o.greenDelivery ? 1.2 : 0), 0); // Example: 1.2kg saved per green delivery
+      const totalCO2 = orders.reduce((sum, o) => sum + (o.co2Emission || 0), 0);
+      const totalEnergy = orders.reduce((sum, o) => sum + (o.energyUsage || 0), 0);
+      const avgEfficiency = totalOrders > 0 ? (orders.reduce((sum, o) => sum + (o.deliveryEfficiencyScore || 0), 0) / totalOrders).toFixed(2) : '0.0';
+      // Breakdown by zone
+      const byZone: Record<string, { co2: number; energy: number; count: number }> = {};
+      for (const o of orders) {
+        const zone = o.location || 'unknown';
+        if (!byZone[zone]) byZone[zone] = { co2: 0, energy: 0, count: 0 };
+        byZone[zone].co2 += o.co2Emission || 0;
+        byZone[zone].energy += o.energyUsage || 0;
+        byZone[zone].count += 1;
+      }
+      // Breakdown by delivery mode
+      const byMode: Record<string, { co2: number; energy: number; count: number }> = {};
+      for (const o of orders) {
+        const mode = (o as any).deliveryMode || 'unknown';
+        if (!byMode[mode]) byMode[mode] = { co2: 0, energy: 0, count: 0 };
+        byMode[mode].co2 += o.co2Emission || 0;
+        byMode[mode].energy += o.energyUsage || 0;
+        byMode[mode].count += 1;
+      }
+      // Breakdown by month
+      const byMonth: Record<string, { co2: number; energy: number; count: number }> = {};
+      for (const o of orders) {
+        const month = o.createdAt ? new Date(o.createdAt).toISOString().slice(0,7) : 'unknown';
+        if (!byMonth[month]) byMonth[month] = { co2: 0, energy: 0, count: 0 };
+        byMonth[month].co2 += o.co2Emission || 0;
+        byMonth[month].energy += o.energyUsage || 0;
+        byMonth[month].count += 1;
+      }
       res.json({
         totalOrders,
         greenOrders,
         co2Saved: co2Saved.toFixed(2),
+        totalCO2: totalCO2.toFixed(2),
+        totalEnergy: totalEnergy.toFixed(2),
+        avgEfficiency,
+        byZone,
+        byMode,
+        byMonth,
         greenDeliveryRate: totalOrders > 0 ? ((greenOrders / totalOrders) * 100).toFixed(1) : '0.0'
       });
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch sustainability metrics' });
+    }
+  });
+
+  // --- Sustainability Metrics Export API ---
+  app.get('/api/sustainability-metrics/export', authenticate, async (req, res) => {
+    try {
+      const orders = await storage.getAllClickCollectOrders();
+      const rows = orders.map(o => ({
+        id: o.id,
+        productName: o.productName,
+        quantity: o.quantity,
+        location: o.location,
+        deliveryMode: (o as any).deliveryMode || 'unknown',
+        co2Emission: o.co2Emission,
+        energyUsage: o.energyUsage,
+        deliveryEfficiencyScore: o.deliveryEfficiencyScore,
+        createdAt: o.createdAt,
+        greenDelivery: o.greenDelivery
+      }));
+      const csv = [
+        'id,productName,quantity,location,deliveryMode,co2Emission,energyUsage,deliveryEfficiencyScore,createdAt,greenDelivery',
+        ...rows.map(r => Object.values(r).join(','))
+      ].join('\n');
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="sustainability_metrics.csv"');
+      res.send(csv);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to export sustainability metrics' });
     }
   });
 
@@ -1197,6 +1587,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         co2 = +(distance * 0.18).toFixed(2);
       }
       const eta = Math.round((distance / speed) * 60); // minutes
+      // Sustainability metrics
+      const energy = +(co2 * 0.5).toFixed(2);
+      const efficiency = +(100 - (co2 + energy) / 50 * 100).toFixed(2);
       const delivery = {
         id: deliveryIdCounter++,
         orderId,
@@ -1207,6 +1600,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         current: { ...start },
         eta,
         co2,
+        energy,
+        efficiency,
         speed,
         cost,
         assignedAt: new Date().toISOString(),
@@ -1490,8 +1885,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/real-time/robot-health', authenticate, async (req, res) => {
     try {
-      const robotHealth = realTimeAnalytics.getRobotHealthData();
-      res.json(robotHealth);
+      // const robotHealth = realTimeAnalytics.getRobotHealthData(); // Removed: method does not exist
+      res.json({ robotHealth: 'Robot health data not available' });
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch robot health data' });
     }
@@ -1501,7 +1896,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/ml/demand-forecast', authenticate, async (req, res) => {
     try {
       const { historicalData, productId } = req.body;
-      const forecast = await getMLPrediction(historicalData, { model: 'transformer', productId });
+      const forecast = await getMLExplanation(historicalData, { model: 'transformer', productId });
       res.json(forecast);
     } catch (error) {
       res.status(500).json({ error: 'Failed to generate demand forecast' });
@@ -1511,7 +1906,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/ml/warehouse-vision', authenticate, async (req, res) => {
     try {
       const { imageData } = req.body;
-      const analysis = await getMLPrediction(imageData, { model: 'yolo' });
+      const analysis = await getMLExplanation(imageData, { model: 'yolo' });
       res.json(analysis);
     } catch (error) {
       res.status(500).json({ error: 'Failed to analyze warehouse vision' });
@@ -1520,8 +1915,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/ml/route-optimization-rl', authenticate, async (req, res) => {
     try {
-      const { routeState, routeInfo } = req.body;
-      const optimization = await getMLPrediction(routeState, { model: 'dqn', routeInfo });
+      const { graph, start, end } = req.body;
+      const optimization = await getMLRouteRecommendation(graph, start, end);
       res.json(optimization);
     } catch (error) {
       res.status(500).json({ error: 'Failed to optimize route with RL' });
@@ -1531,7 +1926,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/ml/sentiment-analysis', authenticate, async (req, res) => {
     try {
       const { feedbackText } = req.body;
-      const sentiment = await getMLPrediction(feedbackText, { model: 'nlp' });
+      const sentiment = await getMLExplanation(feedbackText, { model: 'nlp' });
       res.json(sentiment);
     } catch (error) {
       res.status(500).json({ error: 'Failed to analyze sentiment' });
@@ -1592,7 +1987,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/blockchain/smart-contract', authenticate, async (req, res) => {
     try {
       const { supplierId, productId, amount, conditions } = req.body;
-      const contract = await blockchainService.createSmartContract(supplierId, productId, amount, conditions);
+      const blockHash = generateBlockHash(supplierId, productId, amount, 'contract');
+      const contract = {
+        id: (mockContracts.length + 1).toString(),
+        name: `Contract #${mockContracts.length + 1}`,
+        description: 'Auto-generated contract',
+        status: 'active',
+        type: 'automation',
+        lastExecuted: null,
+        executionCount: 0,
+        conditions,
+        actions: ['Auto-action'],
+        supplierId,
+        productId,
+        amount,
+        blockHash
+      };
+      mockContracts.push(contract);
+      saveBlockchainState();
       res.json(contract);
     } catch (error) {
       res.status(500).json({ error: 'Failed to create smart contract' });
@@ -1629,11 +2041,101 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Sustainability Analytics Endpoints
+  app.get('/api/blockchain/sustainability/metrics', authenticate, async (req, res) => {
+    try {
+      const metrics = await blockchainService.getSustainabilityMetrics();
+      res.json(metrics);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to get sustainability metrics' });
+    }
+  });
+
+  app.get('/api/blockchain/sustainability/trends', authenticate, async (req, res) => {
+    try {
+      const metrics = await blockchainService.getSustainabilityMetrics();
+      res.json({ trends: metrics.sustainabilityTrends });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to get sustainability trends' });
+    }
+  });
+
+  app.get('/api/blockchain/sustainability/carbon-footprint/:productId', authenticate, async (req, res) => {
+    try {
+      const { productId } = req.params;
+      const traces = await blockchainService.getProductTraceability(productId);
+      const totalFootprint = traces.reduce((sum, trace) => sum + (trace.carbonFootprint || 0), 0);
+      res.json({ productId, totalFootprint, traces: traces.length });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to get carbon footprint' });
+    }
+  });
+
+  // Carbon Projects Endpoints
+  app.post('/api/blockchain/carbon-projects', authenticate, async (req, res) => {
+    try {
+      const { name, description, location, carbonOffset, verificationDocument } = req.body;
+      const project = await blockchainService.createCarbonProject(
+        name, description, location, carbonOffset, verificationDocument
+      );
+      res.json(project);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to create carbon project' });
+    }
+  });
+
+  app.get('/api/blockchain/carbon-projects', authenticate, async (req, res) => {
+    try {
+      const projects = await blockchainService.getCarbonProjects();
+      res.json({ projects });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to get carbon projects' });
+    }
+  });
+
+  app.post('/api/blockchain/carbon-projects/:projectId/verify', authenticate, async (req, res) => {
+    try {
+      const { projectId } = req.params;
+      const success = await blockchainService.verifyCarbonProject(projectId);
+      res.json({ success });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to verify carbon project' });
+    }
+  });
+
+  // Enhanced Green Token Endpoints
+  app.get('/api/blockchain/green-tokens/transactions/:owner', authenticate, async (req, res) => {
+    try {
+      const { owner } = req.params;
+      const tokens = blockchainService['greenTokens'].get(owner) || [];
+      res.json({ transactions: tokens });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to get token transactions' });
+    }
+  });
+
+  app.get('/api/blockchain/green-tokens/leaderboard', authenticate, async (req, res) => {
+    try {
+      const greenTokens = blockchainService['greenTokens'];
+      const leaderboard = Array.from(greenTokens.entries())
+        .map(([owner, tokens]) => ({
+          owner,
+          balance: tokens.reduce((sum, token) => sum + token.amount, 0),
+          carbonOffset: tokens.reduce((sum, token) => sum + token.carbonOffset, 0)
+        }))
+        .sort((a, b) => b.balance - a.balance)
+        .slice(0, 10);
+      res.json({ leaderboard });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to get leaderboard' });
+    }
+  });
+
   // Edge Computing Endpoints
   app.get('/api/edge/devices', authenticate, async (req, res) => {
     try {
-      const devices = await get_all_devices_status();
-      res.json(devices);
+      const { data } = await axios.get(`${EDGE_API_BASE}/devices`);
+      res.json(data);
     } catch (error) {
       res.status(500).json({ error: 'Failed to get edge devices' });
     }
@@ -1642,8 +2144,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/edge/devices/:deviceId', authenticate, async (req, res) => {
     try {
       const { deviceId } = req.params;
-      const device = await get_device_status(deviceId);
-      res.json(device);
+      const { data } = await axios.get(`${EDGE_API_BASE}/devices/${deviceId}`);
+      res.json(data);
     } catch (error) {
       res.status(500).json({ error: 'Failed to get device status' });
     }
@@ -1652,10 +2154,80 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/edge/emergency-coordination', authenticate, async (req, res) => {
     try {
       const { clusterId, emergencyType, details } = req.body;
-      await trigger_emergency_coordination(clusterId, emergencyType, details);
-      res.json({ success: true });
+      const { data } = await axios.post(`${EDGE_API_BASE}/emergency-coordination`, {
+        clusterId,
+        emergencyType,
+        details
+      });
+      res.json(data);
     } catch (error) {
       res.status(500).json({ error: 'Failed to trigger emergency coordination' });
+    }
+  });
+
+  // Enhanced Edge Computing Endpoints
+  app.get('/api/edge/analytics', authenticate, async (req, res) => {
+    try {
+      const { data } = await axios.get(`${EDGE_API_BASE}/analytics`);
+      res.json(data);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to get edge analytics' });
+    }
+  });
+
+  app.get('/api/edge/clusters', authenticate, async (req, res) => {
+    try {
+      // Get a list of clusters from FastAPI service
+      const clusters = [];
+      for (const clusterId of ['cluster-warehouse-a', 'cluster-warehouse-b', 'cluster-loading-dock']) {
+        try {
+          const { data: clusterStatus } = await axios.get(`${EDGE_API_BASE}/clusters/${clusterId}`);
+          if (clusterStatus && !clusterStatus.error) {
+            clusters.push(clusterStatus);
+          }
+        } catch {}
+      }
+      res.json({ clusters });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to get clusters' });
+    }
+  });
+
+  app.get('/api/edge/clusters/:clusterId', authenticate, async (req, res) => {
+    try {
+      const { clusterId } = req.params;
+      const { data: clusterStatus } = await axios.get(`${EDGE_API_BASE}/clusters/${clusterId}`);
+      res.json(clusterStatus);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to get cluster status' });
+    }
+  });
+
+  app.get('/api/edge/emergencies', authenticate, async (req, res) => {
+    try {
+      const { data } = await axios.get(`${EDGE_API_BASE}/emergencies`);
+      res.json({ emergencies: data });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to get emergency events' });
+    }
+  });
+
+  app.post('/api/edge/devices', authenticate, async (req, res) => {
+    try {
+      const { deviceId, deviceType, location } = req.body;
+      const { data } = await axios.post(`${EDGE_API_BASE}/devices`, { deviceId, deviceType, location });
+      res.json(data);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to create device' });
+    }
+  });
+
+  app.get('/api/edge/devices/:deviceId/ml-models', authenticate, async (req, res) => {
+    try {
+      // For demo, just return an empty object or mock data
+      res.json({ ml_models: {} });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to get device ML models' });
     }
   });
 
@@ -1967,6 +2539,212 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // --- IoT Data Endpoints ---
+  app.get('/api/iot/live', async (req, res) => {
+    try {
+      // Get latest record for each zone
+      const zones = ['A', 'B', 'C'];
+      const results = await Promise.all(zones.map(async zone => {
+        const { rows } = await pool.query('SELECT * FROM iot_readings WHERE zone = $1 ORDER BY timestamp DESC LIMIT 1', [zone]);
+        return rows[0];
+      }));
+      res.json(results.filter(Boolean));
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch latest IoT data' });
+    }
+  });
+
+  app.get('/api/iot/history', async (req, res) => {
+    try {
+      const { zone, limit = 10 } = req.query;
+      if (!zone) return res.status(400).json({ error: 'zone is required' });
+      const { rows } = await pool.query('SELECT * FROM iot_readings WHERE zone = $1 ORDER BY timestamp DESC LIMIT $2', [zone, limit]);
+      res.json(rows);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch IoT history' });
+    }
+  });
+
+  // --- Delivery Mode Recommendation Proxy ---
+  app.post('/api/recommend/delivery-mode', async (req, res) => {
+    try {
+      const { distance, priority, package_size } = req.body;
+      if (typeof distance !== 'number' || !['low','normal','high'].includes(priority) || !['small','medium','large'].includes(package_size)) {
+        return res.status(400).json({ error: 'Invalid input' });
+      }
+      const mlUrl = process.env.ML_SERVICE_URL || 'http://localhost:8000/recommend_delivery_mode';
+      const response = await axios.post(mlUrl, { distance, priority, package_size });
+      res.json(response.data);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to get delivery mode recommendation' });
+    }
+  });
+
+  // --- CO2 Tracking Endpoint ---
+  app.get('/api/delivery/co2', async (req, res) => {
+    try {
+      // Mock data for demonstration
+      const data = [
+        { deliveryId: 1, route: 'Delhi → Mumbai', zone: 'A', co2: 12.5 },
+        { deliveryId: 2, route: 'Mumbai → Chennai', zone: 'B', co2: 8.2 },
+        { deliveryId: 3, route: 'Bengaluru → Kolkata', zone: 'C', co2: 5.7 },
+        { deliveryId: 4, route: 'Delhi → Kolkata', zone: 'A', co2: 15.1 },
+        { deliveryId: 5, route: 'Chennai → Delhi', zone: 'B', co2: 7.9 },
+      ];
+      res.json(data);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch CO2 data' });
+    }
+  });
+
+  app.post('/api/erp/sync-orders', authenticate, async (req, res) => {
+    try {
+      const orders = await erpSimulator.syncOrdersWithERP();
+      res.json({ success: true, orders });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to sync orders with ERP' });
+    }
+  });
+
+  app.get('/api/erp/sync-logs', authenticate, async (req, res) => {
+    try {
+      const logs = erpSimulator.getERPSyncLogs();
+      res.json({ logs });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch ERP sync logs' });
+    }
+  });
+
+  // --- Green Option Recommendation Endpoint for Chatbot/UX ---
+  app.post('/api/recommend/green-option', async (req, res) => {
+    try {
+      const { origin, destination, packageSize, priority } = req.body;
+      // Try ML service first
+      let mlResult = null;
+      try {
+        const mlUrl = process.env.ML_SERVICE_URL || 'http://localhost:8000/recommend_delivery_mode';
+        const mlRes = await axios.post(mlUrl, { distance: 10, priority, package_size: packageSize }); // TODO: calculate real distance
+        mlResult = mlRes.data;
+      } catch (e) {
+        // ML service not available, fallback to rule-based
+      }
+      // Fallback: simple rule
+      let recommendation = '';
+      let mode = '';
+      let co2 = 0;
+      if (mlResult && mlResult.mode) {
+        mode = mlResult.mode;
+        co2 = mlResult.co2;
+        recommendation = `Recommended delivery mode: ${mode} (est. CO₂: ${co2} kg)`;
+      } else {
+        // If origin and destination are close, suggest pickup
+        if (origin && destination && Math.abs(origin.lat - destination.lat) < 0.01 && Math.abs(origin.lng - destination.lng) < 0.01) {
+          mode = 'pickup';
+          co2 = 0.1;
+          recommendation = 'Pickup is recommended for lowest carbon footprint.';
+        } else {
+          mode = 'drone';
+          co2 = 0.3;
+          recommendation = 'Drone delivery is recommended for lowest CO₂ emissions.';
+        }
+      }
+      res.json({ mode, co2, recommendation });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to recommend green option' });
+    }
+  });
+
+  // --- Chatbot Webhook Endpoint (Dialogflow/Rasa) ---
+  app.post('/api/chatbot/webhook', async (req, res) => {
+    try {
+      const body = req.body;
+      let intent = '';
+      let params: any = {};
+      if (body.queryResult) {
+        intent = body.queryResult.intent.displayName;
+        params = body.queryResult.parameters || {};
+      } else if (body.intent) {
+        intent = body.intent.name;
+        params = body.entities || {};
+      }
+      let fulfillmentText = '';
+      // --- Order Status Intent ---
+      if (/order.*status|track.*order/i.test(intent)) {
+        const orderId = params.orderId || params.order_id || params['order id'];
+        if (!orderId) {
+          fulfillmentText = 'Please provide your order ID.';
+        } else {
+          const order = await storage.getClickCollectOrder(Number(orderId));
+          if (!order) {
+            fulfillmentText = `Sorry, I could not find an order with ID ${orderId}.`;
+          } else {
+            fulfillmentText = `Order #${order.id} (${order.productName}) is currently '${order.status}'. Last updated: ${order.updatedAt}.`;
+          }
+        }
+      }
+      // --- Green Option Recommendation Intent ---
+      else if (/green.*option|eco.*delivery|sustainable.*option/i.test(intent)) {
+        const origin = params.origin;
+        const destination = params.destination;
+        const packageSize = params.packageSize;
+        const priority = params.priority;
+        const recRes = await axios.post('http://localhost:3000/api/recommend/green-option', { origin, destination, packageSize, priority });
+        const { recommendation } = recRes.data;
+        fulfillmentText = recommendation;
+      }
+      // --- Fallback ---
+      else {
+        fulfillmentText = "I'm sorry, I didn't understand your request. Please ask about order status or green delivery options.";
+      }
+      if (body.queryResult) {
+        res.json({ fulfillmentText });
+      } else {
+        res.json({ text: fulfillmentText });
+      }
+    } catch (error) {
+      res.status(500).json({ fulfillmentText: 'Sorry, there was an error processing your request.' });
+    }
+  });
+
+  // --- Click-and-Collect Order Status Endpoint for Chatbot/Tracking ---
+  app.get('/api/orders/:id/status', async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: 'Invalid order ID' });
+      const order = await storage.getClickCollectOrder(id);
+      if (!order) return res.status(404).json({ error: 'Order not found' });
+      // Only include properties that exist on the order object
+      const {
+        id: orderId,
+        status,
+        productName,
+        quantity,
+        customerName,
+        location,
+        updatedAt,
+        greenDelivery,
+        co2Emission,
+        energyUsage
+      } = order;
+      res.json({
+        id: orderId,
+        status,
+        productName,
+        quantity,
+        customerName,
+        location,
+        updatedAt,
+        greenDelivery,
+        co2Emission,
+        energyUsage
+      });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch order status' });
+    }
+  });
+
+  app.use(openapiRouter);
+
   const httpServer = createServer(app);
 
   // WebSocket Server Setup
@@ -1989,48 +2767,273 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // PostgreSQL LISTEN setup for real-time notifications
   const notificationClient = await pool.connect();
-  
-  await notificationClient.query('LISTEN data_updates');
-  
+  await notificationClient.query('LISTEN notification_channel');
   notificationClient.on('notification', (msg) => {
-    if (msg.channel === 'data_updates') {
-      try {
-        const payload = JSON.parse(msg.payload || '{}');
-        console.log('Database notification received:', payload);
-        // Broadcast to all connected WebSocket clients
-        if (payload.type === 'inventory_update') {
-          clients.forEach((client) => {
-            if (client.readyState === WebSocket.OPEN) {
-              client.send(JSON.stringify({
-                type: 'inventory_update',
-                data: payload.data,
-                timestamp: new Date().toISOString()
-              }));
-            }
-          });
-        } else {
-          clients.forEach((client) => {
-            if (client.readyState === WebSocket.OPEN) {
-              client.send(JSON.stringify({
-                type: 'data_update',
-                data: payload,
-                timestamp: new Date().toISOString()
-              }));
-            }
-          });
-        }
-      } catch (error) {
-        console.error('Error processing notification:', error);
+    const payload = JSON.parse(msg.payload || '{}');
+    clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify({
+          type: 'notification',
+          data: payload,
+          timestamp: new Date().toISOString()
+        }));
       }
-    }
+    });
   });
 
-  // Start demo data generator for testing
-  if (process.env.NODE_ENV === 'development') {
-    setTimeout(() => {
-      startDemoDataGenerator();
-    }, 2000);
+  return httpServer;
+}
+
+// Mock data generation for omnichannel analytics
+function generateMockOrders(period: string): any[] {
+  const now = new Date();
+  let daysBack: number;
+  
+  switch (period) {
+    case '24h':
+      daysBack = 1;
+      break;
+    case '7d':
+      daysBack = 7;
+      break;
+    case '30d':
+      daysBack = 30;
+      break;
+    default:
+      daysBack = 7;
   }
 
-  return httpServer;
+  const mockCustomers = [
+    'Amit Kumar', 'Priya Singh', 'Ravi Patel', 'Sunita Sharma', 'Vikram Rao',
+    'Neha Verma', 'Arjun Mehta', 'Kavita Joshi', 'Suresh Reddy', 'Meera Nair',
+    'Deepak Shah', 'Anjali Gupta', 'Rahul Yadav', 'Pooja Desai', 'Manish Jain',
+    'Kiran Malhotra', 'Rajesh Khanna', 'Smita Patel', 'Vivek Sharma', 'Anita Reddy'
+  ];
+
+  const mockProducts = [
+    'Laptop', 'Smartphone', 'T-Shirt', 'Jeans', 'Shoes', 'Headphones', 
+    'Watch', 'Backpack', 'Water Bottle', 'Books', 'Groceries', 'Electronics',
+    'Clothing', 'Accessories', 'Home & Garden', 'Sports Equipment', 'Toys',
+    'Beauty Products', 'Health & Wellness', 'Automotive'
+  ];
+
+  const mockLocations = [
+    'Mumbai Central', 'Delhi NCR', 'Bangalore Tech Park', 'Chennai Marina',
+    'Kolkata Salt Lake', 'Hyderabad Hitech City', 'Pune Hinjewadi',
+    'Ahmedabad Satellite', 'Jaipur Pink City', 'Lucknow Gomti Nagar'
+  ];
+
+  const channels = ['online', 'in-store', 'mobile', 'partner'];
+  const statuses = ['Pending', 'Ready', 'PickedUp', 'Cancelled'];
+
+  const orders = [];
+  const totalOrders = Math.floor(Math.random() * 200) + 100; // 100-300 orders
+
+  for (let i = 0; i < totalOrders; i++) {
+    const daysAgo = Math.floor(Math.random() * daysBack);
+    const createdAt = new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000);
+    const updatedAt = new Date(createdAt.getTime() + Math.random() * 48 * 60 * 60 * 1000); // 0-48 hours later
+    
+    const channel = channels[Math.floor(Math.random() * channels.length)];
+    const status = statuses[Math.floor(Math.random() * statuses.length)];
+    const greenDelivery = Math.random() < 0.3; // 30% green delivery
+    const quantity = Math.floor(Math.random() * 5) + 1; // 1-5 items
+    
+    // Generate sustainability metrics
+    const co2Emission = greenDelivery ? 
+      (Math.random() * 2 + 0.5) : // 0.5-2.5 kg for green delivery
+      (Math.random() * 4 + 2); // 2-6 kg for regular delivery
+    
+    const energyUsage = co2Emission * (0.3 + Math.random() * 0.4); // 0.3-0.7 ratio
+    const deliveryEfficiencyScore = greenDelivery ? 
+      (85 + Math.random() * 15) : // 85-100 for green delivery
+      (60 + Math.random() * 25); // 60-85 for regular delivery
+
+    orders.push({
+      id: 1000 + i,
+      productName: mockProducts[Math.floor(Math.random() * mockProducts.length)],
+      customerName: mockCustomers[Math.floor(Math.random() * mockCustomers.length)],
+      customerContact: `+91-98${Math.floor(10000000 + Math.random() * 90000000)}`,
+      quantity,
+      location: mockLocations[Math.floor(Math.random() * mockLocations.length)],
+      status,
+      channel,
+      greenDelivery,
+      co2Emission: Math.round(co2Emission * 100) / 100,
+      energyUsage: Math.round(energyUsage * 100) / 100,
+      deliveryEfficiencyScore: Math.round(deliveryEfficiencyScore * 100) / 100,
+      createdAt: createdAt.toISOString(),
+      updatedAt: updatedAt.toISOString()
+    });
+  }
+
+  return orders;
+}
+
+// Helper functions for omnichannel analytics
+function calculateRepeatCustomers(orders: any[]): number {
+  const customerOrderCounts: { [key: string]: number } = {};
+  orders.forEach(order => {
+    customerOrderCounts[order.customerName] = (customerOrderCounts[order.customerName] || 0) + 1;
+  });
+  return Object.values(customerOrderCounts).filter(count => count > 1).length;
+}
+
+function calculateChannelSwitching(orders: any[]): { [key: string]: number } {
+  const customerChannels: { [key: string]: Set<string> } = {};
+  orders.forEach(order => {
+    if (!customerChannels[order.customerName]) {
+      customerChannels[order.customerName] = new Set();
+    }
+    customerChannels[order.customerName].add(order.channel);
+  });
+  
+  const switching: { [key: string]: number } = {};
+  Object.values(customerChannels).forEach(channels => {
+    const channelCount = channels.size;
+    if (channelCount > 1) {
+      switching[`${channelCount} channels`] = (switching[`${channelCount} channels`] || 0) + 1;
+    }
+  });
+  return switching;
+}
+
+function calculatePeakHours(orders: any[]): string[] {
+  const hourCounts: { [key: number]: number } = {};
+  orders.forEach(order => {
+    const hour = new Date(order.createdAt).getHours();
+    hourCounts[hour] = (hourCounts[hour] || 0) + 1;
+  });
+  
+  const sortedHours = Object.entries(hourCounts)
+    .sort(([,a], [,b]) => b - a)
+    .slice(0, 3)
+    .map(([hour]) => `${hour}:00-${parseInt(hour) + 1}:00`);
+  
+  return sortedHours;
+}
+
+function calculateTopProducts(orders: any[]): { name: string; count: number }[] {
+  const productCounts: { [key: string]: number } = {};
+  orders.forEach(order => {
+    productCounts[order.productName] = (productCounts[order.productName] || 0) + 1;
+  });
+  
+  return Object.entries(productCounts)
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+}
+
+function calculateAverageEfficiencyScore(orders: any[]): number {
+  const efficiencyScores = orders
+    .filter(order => order.deliveryEfficiencyScore)
+    .map(order => order.deliveryEfficiencyScore);
+  
+  if (efficiencyScores.length === 0) return 0;
+  return efficiencyScores.reduce((sum, score) => sum + score, 0) / efficiencyScores.length;
+}
+
+function calculatePreferredChannel(orders: any[]): string {
+  const channelCounts: { [key: string]: number } = {};
+  orders.forEach(order => {
+    channelCounts[order.channel] = (channelCounts[order.channel] || 0) + 1;
+  });
+  
+  return Object.entries(channelCounts)
+    .sort(([,a], [,b]) => b - a)[0]?.[0] || 'unknown';
+}
+
+function calculateCustomerSustainabilityScore(orders: any[]): number {
+  const greenDeliveries = orders.filter(order => order.greenDelivery).length;
+  const totalCarbon = orders.reduce((sum, order) => sum + (order.co2Emission || 0), 0);
+  const avgCarbon = totalCarbon / orders.length;
+  
+  // Score based on green delivery rate and carbon efficiency
+  const greenScore = (greenDeliveries / orders.length) * 50;
+  const carbonScore = Math.max(0, 50 - (avgCarbon * 10)); // Lower carbon = higher score
+  
+  return Math.round((greenScore + carbonScore) * 100) / 100;
+}
+
+function calculateDailyTrends(orders: any[], metric: string): { date: string; value: number }[] {
+  const dailyData: { [key: string]: number[] } = {};
+  
+  orders.forEach(order => {
+    const date = new Date(order.createdAt).toISOString().split('T')[0];
+    if (!dailyData[date]) dailyData[date] = [];
+    
+    if (metric === 'greenDelivery') {
+      dailyData[date].push(order.greenDelivery ? 1 : 0);
+    } else {
+      dailyData[date].push(order[metric] || 0);
+    }
+  });
+  
+  return Object.entries(dailyData)
+    .map(([date, values]) => ({
+      date,
+      value: values.reduce((sum, val) => sum + val, 0) / values.length
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function calculateSustainableProducts(orders: any[]): { name: string; greenRate: number; avgCarbon: number }[] {
+  const productData: { [key: string]: { greenCount: number; totalCount: number; carbonSum: number } } = {};
+  
+  orders.forEach(order => {
+    if (!productData[order.productName]) {
+      productData[order.productName] = { greenCount: 0, totalCount: 0, carbonSum: 0 };
+    }
+    
+    productData[order.productName].totalCount++;
+    if (order.greenDelivery) {
+      productData[order.productName].greenCount++;
+    }
+    productData[order.productName].carbonSum += order.co2Emission || 0;
+  });
+  
+  return Object.entries(productData)
+    .map(([name, data]) => ({
+      name,
+      greenRate: (data.greenCount / data.totalCount) * 100,
+      avgCarbon: data.carbonSum / data.totalCount
+    }))
+    .sort((a, b) => b.greenRate - a.greenRate)
+    .slice(0, 10);
+}
+
+function generateSustainabilityRecommendations(orders: any[]): string[] {
+  const recommendations: string[] = [];
+  
+  const greenDeliveryRate = orders.filter(order => order.greenDelivery).length / orders.length;
+  const avgCarbon = orders.reduce((sum, order) => sum + (order.co2Emission || 0), 0) / orders.length;
+  
+  if (greenDeliveryRate < 0.3) {
+    recommendations.push('Consider incentivizing green delivery options to increase adoption');
+  }
+  
+  if (avgCarbon > 5) {
+    recommendations.push('Optimize delivery routes to reduce carbon footprint per order');
+  }
+  
+  const channelGreenRates: { [key: string]: number } = {};
+  orders.forEach(order => {
+    if (!channelGreenRates[order.channel]) {
+      channelGreenRates[order.channel] = { green: 0, total: 0 };
+    }
+    channelGreenRates[order.channel].total++;
+    if (order.greenDelivery) {
+      channelGreenRates[order.channel].green++;
+    }
+  });
+  
+  Object.entries(channelGreenRates).forEach(([channel, data]) => {
+    const rate = data.green / data.total;
+    if (rate < 0.2) {
+      recommendations.push(`Promote green delivery options more prominently in ${channel} channel`);
+    }
+  });
+  
+  return recommendations.slice(0, 5);
 }
