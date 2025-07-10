@@ -108,32 +108,8 @@ class ExternalIntegrationsService extends EventEmitter {
 
   // ERP System Integration (SAP/Oracle)
   public async getERPProducts(): Promise<ERPProduct[]> {
-    try {
-      const response = await axios.get(`${this.erpBaseUrl}/products`, {
-        headers: {
-          'Authorization': `Bearer ${process.env.ERP_API_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 10000
-      });
-
-      return response.data.map((product: any) => ({
-        id: product.id,
-        name: product.name,
-        sku: product.sku,
-        category: product.category,
-        supplier: product.supplier,
-        cost: product.cost,
-        price: product.price,
-        minStock: product.minStock,
-        maxStock: product.maxStock,
-        leadTime: product.leadTime
-      }));
-    } catch (error) {
-      console.error('Error fetching ERP products:', error);
-      // Return mock data for demonstration
-      return this.getMockERPProducts();
-    }
+    // Always return mock data for local/demo/dev
+    return this.getMockERPProducts();
   }
 
   public async createERPPurchaseOrder(order: Omit<ERPPurchaseOrder, 'id' | 'status' | 'createdAt'>): Promise<ERPPurchaseOrder> {
@@ -543,30 +519,50 @@ class ExternalIntegrationsService extends EventEmitter {
   // Mock data generators
   private getMockERPProducts(): ERPProduct[] {
     return [
-      {
-        id: 'ERP-001',
-        name: 'Laptop',
-        sku: 'LAP-001',
-        category: 'Electronics',
-        supplier: 'TechCorp',
-        cost: 800,
-        price: 1200,
-        minStock: 10,
-        maxStock: 100,
-        leadTime: 7
-      },
-      {
-        id: 'ERP-002',
-        name: 'Smartphone',
-        sku: 'PHN-001',
-        category: 'Electronics',
-        supplier: 'MobileTech',
-        cost: 400,
-        price: 600,
-        minStock: 20,
-        maxStock: 150,
-        leadTime: 5
-      }
+      { id: 'ERP-001', name: 'Laptop', sku: 'LAP-001', category: 'Electronics', supplier: 'CarryAll', cost: 153, price: 226, minStock: 18, maxStock: 39, leadTime: 15 },
+      { id: 'ERP-002', name: 'Smartphone', sku: 'SMA-002', category: 'Electronics', supplier: 'TechCorp', cost: 160, price: 279, minStock: 22, maxStock: 121, leadTime: 6 },
+      { id: 'ERP-003', name: 'Tablet', sku: 'TAB-003', category: 'Electronics', supplier: 'TimeTech', cost: 1650, price: 2681, minStock: 19, maxStock: 159, leadTime: 5 },
+      { id: 'ERP-004', name: 'Smartwatch', sku: 'SMA-004', category: 'Electronics', supplier: 'ToyZone', cost: 924, price: 1542, minStock: 14, maxStock: 93, leadTime: 13 },
+      { id: 'ERP-005', name: 'Camera', sku: 'CAM-005', category: 'Electronics', supplier: 'VisualTech', cost: 1811, price: 2413, minStock: 16, maxStock: 137, leadTime: 5 },
+      { id: 'ERP-006', name: 'LED TV', sku: 'LED-006', category: 'Electronics', supplier: 'TimeTech', cost: 1842, price: 2610, minStock: 26, maxStock: 96, leadTime: 10 },
+      { id: 'ERP-007', name: 'Bluetooth Speaker', sku: 'BLU-007', category: 'Electronics', supplier: 'TechCorp', cost: 384, price: 558, minStock: 9, maxStock: 29, leadTime: 7 },
+      { id: 'ERP-008', name: 'Monitor', sku: 'MON-008', category: 'Electronics', supplier: 'ToyZone', cost: 585, price: 885, minStock: 27, maxStock: 102, leadTime: 8 },
+      { id: 'ERP-009', name: 'Microwave Oven', sku: 'MIC-009', category: 'Home Appliance', supplier: 'FitStep', cost: 822, price: 1154, minStock: 28, maxStock: 48, leadTime: 12 },
+      { id: 'ERP-010', name: 'Refrigerator', sku: 'REF-010', category: 'Home Appliance', supplier: 'VisualTech', cost: 1364, price: 1881, minStock: 7, maxStock: 94, leadTime: 3 },
+      { id: 'ERP-011', name: 'Air Conditioner', sku: 'AIR-011', category: 'Home Appliance', supplier: 'FitStep', cost: 1083, price: 1692, minStock: 28, maxStock: 173, leadTime: 13 },
+      { id: 'ERP-012', name: 'Washing Machine', sku: 'WAS-012', category: 'Home Appliance', supplier: 'ToyZone', cost: 1207, price: 1745, minStock: 23, maxStock: 43, leadTime: 13 },
+      { id: 'ERP-013', name: 'Vacuum Cleaner', sku: 'VAC-013', category: 'Home Appliance', supplier: 'HomeEssence', cost: 598, price: 1000, minStock: 13, maxStock: 81, leadTime: 7 },
+      { id: 'ERP-014', name: 'Backpack', sku: 'BAC-014', category: 'Accessories', supplier: 'DailyFresh', cost: 1684, price: 2705, minStock: 25, maxStock: 122, leadTime: 12 },
+      { id: 'ERP-015', name: 'Headphones', sku: 'HEA-015', category: 'Accessories', supplier: 'CoolHome', cost: 1174, price: 2103, minStock: 12, maxStock: 107, leadTime: 3 },
+      { id: 'ERP-016', name: 'Mouse', sku: 'MOU-016', category: 'Accessories', supplier: 'DailyFresh', cost: 1207, price: 2130, minStock: 20, maxStock: 122, leadTime: 15 },
+      { id: 'ERP-017', name: 'Keyboard', sku: 'KEY-017', category: 'Accessories', supplier: 'FitStep', cost: 1078, price: 1405, minStock: 29, maxStock: 108, leadTime: 7 },
+      { id: 'ERP-018', name: 'Charger', sku: 'CHA-018', category: 'Accessories', supplier: 'MobileTech', cost: 364, price: 649, minStock: 17, maxStock: 82, leadTime: 11 },
+      { id: 'ERP-019', name: 'T-Shirt', sku: 'TSH-019', category: 'Apparel', supplier: 'DenimWorld', cost: 167, price: 304, minStock: 9, maxStock: 71, leadTime: 6 },
+      { id: 'ERP-020', name: 'Jeans', sku: 'JEA-020', category: 'Apparel', supplier: 'FitStep', cost: 617, price: 974, minStock: 7, maxStock: 77, leadTime: 7 },
+      { id: 'ERP-021', name: 'Jacket', sku: 'JAC-021', category: 'Apparel', supplier: 'CarryAll', cost: 1370, price: 2404, minStock: 12, maxStock: 56, leadTime: 14 },
+      { id: 'ERP-022', name: 'Sneakers', sku: 'SNE-022', category: 'Apparel', supplier: 'VisualTech', cost: 649, price: 1060, minStock: 11, maxStock: 63, leadTime: 12 },
+      { id: 'ERP-023', name: 'Cap', sku: 'CAP-023', category: 'Apparel', supplier: 'CarryAll', cost: 927, price: 1421, minStock: 7, maxStock: 119, leadTime: 5 },
+      { id: 'ERP-024', name: 'Shoes', sku: 'SHO-024', category: 'Footwear', supplier: 'ToyZone', cost: 1245, price: 1625, minStock: 10, maxStock: 134, leadTime: 15 },
+      { id: 'ERP-025', name: 'Sandals', sku: 'SAN-025', category: 'Footwear', supplier: 'FitStep', cost: 588, price: 797, minStock: 21, maxStock: 125, leadTime: 14 },
+      { id: 'ERP-026', name: 'Boots', sku: 'BOO-026', category: 'Footwear', supplier: 'DenimWorld', cost: 1072, price: 1718, minStock: 30, maxStock: 85, leadTime: 6 },
+      { id: 'ERP-027', name: 'Slippers', sku: 'SLI-027', category: 'Footwear', supplier: 'ToyZone', cost: 1433, price: 1951, minStock: 19, maxStock: 107, leadTime: 8 },
+      { id: 'ERP-028', name: 'Rice', sku: 'RIC-028', category: 'Groceries', supplier: 'DailyFresh', cost: 186, price: 242, minStock: 18, maxStock: 66, leadTime: 10 },
+      { id: 'ERP-029', name: 'Wheat Flour', sku: 'WHE-029', category: 'Groceries', supplier: 'DenimWorld', cost: 435, price: 696, minStock: 15, maxStock: 78, leadTime: 14 },
+      { id: 'ERP-030', name: 'Cooking Oil', sku: 'COO-030', category: 'Groceries', supplier: 'ToyZone', cost: 296, price: 538, minStock: 8, maxStock: 106, leadTime: 12 },
+      { id: 'ERP-031', name: 'Sugar', sku: 'SUG-031', category: 'Groceries', supplier: 'HomeEssence', cost: 1687, price: 2523, minStock: 25, maxStock: 66, leadTime: 5 },
+      { id: 'ERP-032', name: 'Salt', sku: 'SAL-032', category: 'Groceries', supplier: 'ToyZone', cost: 296, price: 398, minStock: 24, maxStock: 145, leadTime: 14 },
+      { id: 'ERP-033', name: 'Tea', sku: 'TEA-033', category: 'Groceries', supplier: 'MobileTech', cost: 511, price: 833, minStock: 13, maxStock: 102, leadTime: 14 },
+      { id: 'ERP-034', name: 'Coffee', sku: 'COF-034', category: 'Groceries', supplier: 'ToyZone', cost: 1671, price: 2850, minStock: 9, maxStock: 143, leadTime: 13 },
+      { id: 'ERP-035', name: 'Chair', sku: 'CHA-035', category: 'Furniture', supplier: 'FurniCo', cost: 1890, price: 2950, minStock: 13, maxStock: 123, leadTime: 7 },
+      { id: 'ERP-036', name: 'Table', sku: 'TAB-036', category: 'Furniture', supplier: 'FurniCo', cost: 1373, price: 1856, minStock: 29, maxStock: 168, leadTime: 13 },
+      { id: 'ERP-037', name: 'Sofa', sku: 'SOF-037', category: 'Furniture', supplier: 'ToyZone', cost: 1437, price: 1705, minStock: 17, maxStock: 91, leadTime: 5 },
+      { id: 'ERP-038', name: 'Bed', sku: 'BED-038', category: 'Furniture', supplier: 'MobileTech', cost: 1454, price: 2476, minStock: 13, maxStock: 79, leadTime: 14 },
+      { id: 'ERP-039', name: 'Wardrobe', sku: 'WAR-039', category: 'Furniture', supplier: 'FurniCo', cost: 1615, price: 2514, minStock: 20, maxStock: 151, leadTime: 9 },
+      { id: 'ERP-040', name: 'Puzzle', sku: 'PUZ-040', category: 'Toys', supplier: 'ToyZone', cost: 1593, price: 2678, minStock: 23, maxStock: 70, leadTime: 12 },
+      { id: 'ERP-041', name: 'Action Figure', sku: 'ACT-041', category: 'Toys', supplier: 'ToyZone', cost: 1186, price: 1668, minStock: 8, maxStock: 116, leadTime: 9 },
+      { id: 'ERP-042', name: 'Doll', sku: 'DOL-042', category: 'Toys', supplier: 'CarryAll', cost: 847, price: 1440, minStock: 17, maxStock: 64, leadTime: 8 },
+      { id: 'ERP-043', name: 'Remote Car', sku: 'REM-043', category: 'Toys', supplier: 'TechCorp', cost: 453, price: 735, minStock: 12, maxStock: 117, leadTime: 6 },
+      { id: 'ERP-044', name: 'Board Game', sku: 'BOA-044', category: 'Toys', supplier: 'ToyZone', cost: 1891, price: 3367, minStock: 28, maxStock: 158, leadTime: 13 }
     ];
   }
 
