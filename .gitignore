@@ -77,3 +77,7 @@ migrations/
 # Parcel-bundler cache
 .cache
 .parcel-cache
+
+# Ignore Python bytecode and cache files
+__pycache__/
+*.pyc
