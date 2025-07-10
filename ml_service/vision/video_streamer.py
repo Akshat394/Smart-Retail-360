@@ -18,7 +18,7 @@ def get_demo_video_path(video_source: str) -> str:
     if video_source.endswith('.mp4'):
         return os.path.join(DEMO_VIDEO_DIR, video_source)
     else:
-    return os.path.join(DEMO_VIDEO_DIR, f"{video_source}.mp4")
+        return os.path.join(DEMO_VIDEO_DIR, f"{video_source}.mp4")
 
 def get_available_demo_videos() -> List[Dict[str, str]]:
     """Get list of available demo videos"""
@@ -154,25 +154,25 @@ def stream_video_frames(video_source: str, loop: bool = True, fps: float = 24.0)
                 frame_count += 1
             else:
                 # Normal playback, no repeats
-        ret, frame = cap.read()
-        if not ret:
+                ret, frame = cap.read()
+                if not ret:
                     if loop:
                         cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                         frame_count = 0
                         start_time = time.time()
                         continue
                     else:
-            break
+                        break
                 results = model(frame, conf=0.5, verbose=False)
-        detections = []
-        for r in results:
+                detections = []
+                for r in results:
                     if r.boxes is not None:
-            for box in r.boxes:
+                        for box in r.boxes:
                             x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
                             confidence = float(box.conf[0].cpu().numpy())
                             class_id = int(box.cls[0].cpu().numpy())
                             class_name = model.names[class_id] if class_id < len(model.names) else f"class_{class_id}"
-                detections.append({
+                            detections.append({
                                 'bbox': [int(x1), int(y1), int(x2), int(y2)],
                                 'confidence': confidence,
                                 'class_id': class_id,
@@ -185,11 +185,11 @@ def stream_video_frames(video_source: str, loop: bool = True, fps: float = 24.0)
                 detection_text = f"Detections: {len(detections)}"
                 cv2.putText(annotated_frame, detection_text, (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
                 _, jpeg = cv2.imencode('.jpg', annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-        frame_bytes = jpeg.tobytes()
+                frame_bytes = jpeg.tobytes()
                 frame_b64 = base64.b64encode(frame_bytes).decode('utf-8')
                 processing_time = time.time() - start_time
-        yield {
-            "detections": detections,
+                yield {
+                    "detections": detections,
                     "frame": frame_b64,
                     "frame_count": frame_count,
                     "total_frames": total_frames,
@@ -202,7 +202,7 @@ def stream_video_frames(video_source: str, loop: bool = True, fps: float = 24.0)
                 frame_count += 1
                 time.sleep(frame_delay)
     finally:
-    cap.release() 
+        cap.release() 
         print(f"Finished streaming video: {video_source}")
 
 def stream_demo_sequence(loop: bool = True, fps: float = 24.0) -> Generator[Dict[str, Any], None, None]:
