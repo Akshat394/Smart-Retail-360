@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Body, HTTPException, BackgroundTasks, Request, WebSocket
+from fastapi import FastAPI, Body, HTTPException, BackgroundTasks, Request, WebSocket, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
@@ -21,7 +21,7 @@ from models.forecasting import ARIMAModel, LSTMModel, TransformerModel, Ensemble
 
 # Import vision components
 from vision import VideoProcessor
-from vision.video_streamer import stream_video_frames
+from vision.video_streamer import stream_video_frames, stream_demo_sequence, get_available_demo_videos
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -706,35 +706,6 @@ async def reset_vision_system():
         logger.error(f"Reset vision system error: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to reset vision system: {str(e)}")
 
-@app.post("/vision/stream/demo")
-async def vision_stream_demo(request: Request):
-    data = await request.json()
-    video_source = data.get("video_source", "warehouse1")
-    def frame_generator():
-        for result in stream_video_frames(video_source):
-            frame_b64 = base64.b64encode(result["frame"]).decode("utf-8")
-            yield (f"data: {json.dumps({'detections': result['detections'], 'frame': frame_b64})}\n\n")
-    return StreamingResponse(frame_generator(), media_type="text/event-stream")
-
-@app.get("/vision/stream/demo")
-async def vision_stream_demo_get():
-    """GET endpoint for demo video streaming"""
-    def frame_generator():
-        # Use the video processor's demo sequence
-        if video_processor:
-            video_processor.start_processing()
-            # This will use the demo video sequence we implemented
-            return StreamingResponse(
-                "data: {\"status\": \"demo_started\"}\n\n",
-                media_type="text/event-stream"
-            )
-        else:
-            return StreamingResponse(
-                "data: {\"error\": \"video_processor_not_available\"}\n\n",
-                media_type="text/event-stream"
-            )
-    return frame_generator()
-
 @app.websocket("/ws/vision")
 async def websocket_vision(websocket: WebSocket):
     """WebSocket endpoint for real-time vision streaming"""
@@ -752,12 +723,27 @@ async def websocket_vision(websocket: WebSocket):
 
 @app.get("/vision/demo-videos")
 def list_demo_videos():
-    demo_dir = os.path.join(os.path.dirname(__file__), 'demo_videos')
-    videos = [f for f in os.listdir(demo_dir) if f.lower().endswith('.mp4')]
+    videos = get_available_demo_videos()
     # Return as list of {label, value} for frontend dropdown
     return JSONResponse([
-        {"label": os.path.splitext(f)[0].replace('_', ' ').replace('-', ' ').title(), "value": os.path.splitext(f)[0]} for f in videos
+        {"label": video['label'], "value": video['name']} for video in videos
     ])
+
+@app.get("/vision/stream/demo")
+async def vision_stream_demo_get(
+    video_source: str = Query("4292301-uhd_3840_2160_25fps"),
+    fps: float = Query(24.0),
+    loop: bool = Query(True)
+):
+    """GET endpoint for demo video streaming - streams selected video"""
+    def frame_generator():
+        try:
+            for result in stream_video_frames(video_source, loop=loop, fps=fps):
+                yield f"data: {json.dumps(result)}\n\n"
+        except Exception as e:
+            logger.error(f"Error in demo sequence stream: {e}")
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+    return StreamingResponse(frame_generator(), media_type="text/event-stream")
 
 if __name__ == "__main__":
     import uvicorn

@@ -9,26 +9,16 @@ interface Detection {
   timestamp: string;
 }
 
-interface InventoryAnalysis {
+interface VisionResults {
+  detections: Detection[];
+  inventory_analysis: {
   total_items: number;
   category_breakdown: Record<string, number>;
   item_details: Record<string, any>;
   detections: Detection[];
   timestamp: string;
-}
-
-interface Anomaly {
-  type: string;
-  severity: 'low' | 'medium' | 'high' | 'critical';
-  message: string;
-  details: any;
-  timestamp: string;
-}
-
-interface VisionResults {
-  detections: Detection[];
-  inventory_analysis: InventoryAnalysis;
-  anomalies: Anomaly[];
+  };
+  anomalies: any[];
   annotated_frame?: string;
   timestamp: string;
 }
@@ -36,7 +26,7 @@ interface VisionResults {
 interface InventoryUpdate {
   current_inventory: Record<string, number>;
   changes: {
-    category_changes: Record<string, any>;
+    category_changes: Record<string, number>;
     stockout_detected: string[];
     restock_detected: string[];
     significant_changes: any[];
@@ -44,6 +34,18 @@ interface InventoryUpdate {
   alerts: any[];
   analytics: any;
   timestamp: string;
+}
+
+interface VideoStreamData {
+  detections: Detection[];
+  frame: string;
+  frame_count: number;
+  total_frames: number;
+  video_source: string;
+  processing_time: number;
+  fps: number;
+  timestamp: number;
+  error?: string;
 }
 
 const VideoAnalyticsPanel: React.FC = () => {
@@ -56,23 +58,30 @@ const VideoAnalyticsPanel: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [availableVideos, setAvailableVideos] = useState<{label: string, value: string}[]>([]);
   const [selectedVideo, setSelectedVideo] = useState('');
+  const [currentVideoInfo, setCurrentVideoInfo] = useState<{
+    source: string;
+    frame: number;
+    totalFrames: number;
+    fps: number;
+    processingTime: number;
+  } | null>(null);
+  const [playbackControls, setPlaybackControls] = useState({
+    fps: 60, // 60 is smooth, universal, and low-lag for most displays
+    loop: true,
+    isPlaying: false
+  });
   
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>();
   const eventSourceRef = useRef<EventSource | null>(null);
+  const videoImageRef = useRef<HTMLImageElement>(null);
 
   // API base URL
   const API_BASE = 'http://localhost:8001';
 
   useEffect(() => {
-    // Start demo stream on component mount
-    startVideoStream();
-    
     // Fetch available videos on mount
-    axios.get(`${API_BASE}/vision/demo-videos`).then(res => {
-      setAvailableVideos(res.data);
-      if (res.data.length > 0) setSelectedVideo(res.data[0].value);
-    });
+    fetchAvailableVideos();
     
     return () => {
       stopVideoStream();
@@ -82,256 +91,292 @@ const VideoAnalyticsPanel: React.FC = () => {
     };
   }, []);
 
-  const startVideoStream = async () => {
+  const fetchAvailableVideos = async () => {
     try {
-      setIsLoading(true);
-      setError(null);
-      // Always try demo mode first
-      const response = await axios.post(`${API_BASE}/vision/stream`, {
-        action: 'start',
-        video_source: 'demo'
-      });
-      if (response.data.status === 'success') {
-        setIsStreaming(true);
-        setStreamStatus('Running (Demo)');
-        startResultsPolling();
-      } else {
-        setError('Failed to start demo video stream');
-        setStreamStatus('Demo Unavailable');
+      const response = await axios.get(`${API_BASE}/vision/demo-videos`);
+      setAvailableVideos(response.data);
+      if (response.data.length > 0) {
+        setSelectedVideo(response.data[0].value);
       }
     } catch (err) {
-      // Fallback: show demo data even if backend is unavailable
-      setIsStreaming(true);
-      setStreamStatus('Running (Demo Fallback)');
-      setError('Live stream unavailable. Showing demo data.');
-      // Optionally, set static demo data here
-      setVisionResults({
-        detections: [],
-        inventory_analysis: {
-          total_items: 42,
-          category_breakdown: { beverage: 10, food: 12, electronics: 20 },
-          item_details: {},
-          detections: [],
-          timestamp: new Date().toISOString()
-        },
-        anomalies: [],
-        timestamp: new Date().toISOString()
-      });
-      setInventoryUpdate({
-        current_inventory: { beverage: 10, food: 12, electronics: 20 },
-        changes: {
-          category_changes: {},
-          stockout_detected: [],
-          restock_detected: [],
-          significant_changes: []
-        },
-        alerts: [],
-        analytics: {},
-        timestamp: new Date().toISOString()
-      });
-    } finally {
-      setIsLoading(false);
+      console.error('Failed to fetch demo videos:', err);
+      setError('Failed to load demo videos');
     }
-  };
-
-  const stopVideoStream = async () => {
-    try {
-      const response = await axios.post(`${API_BASE}/vision/stream`, {
-        action: 'stop'
-      });
-      
-      if (response.data.status === 'success') {
-        setIsStreaming(false);
-        setStreamStatus('Stopped');
-        if (animationRef.current) {
-          cancelAnimationFrame(animationRef.current);
-        }
-      }
-    } catch (err) {
-      console.error('Stop stream error:', err);
-    }
-  };
-
-  const startResultsPolling = () => {
-    const pollResults = async () => {
-      if (!isStreaming) return;
-      
-      try {
-        const [resultsResponse, inventoryResponse] = await Promise.all([
-          axios.get(`${API_BASE}/vision/latest`),
-          axios.get(`${API_BASE}/vision/inventory`)
-        ]);
-        
-        setVisionResults(resultsResponse.data);
-        setInventoryUpdate(inventoryResponse.data);
-        
-        // Update canvas with annotated frame if available
-        if (resultsResponse.data.annotated_frame) {
-          updateCanvas(resultsResponse.data.annotated_frame);
-        }
-        
-      } catch (err) {
-        console.error('Polling error:', err);
-      }
-      
-      // Continue polling
-      animationRef.current = requestAnimationFrame(pollResults);
-    };
-    
-    pollResults();
-  };
-
-  const updateCanvas = (base64Image: string) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    
-    const img = new Image();
-    img.onload = () => {
-      canvas.width = img.width;
-      canvas.height = img.height;
-      ctx.drawImage(img, 0, 0);
-    };
-    img.src = `data:image/jpeg;base64,${base64Image}`;
-  };
-
-  const getSeverityColor = (severity: string) => {
-    switch (severity) {
-      case 'critical': return 'text-red-600 bg-red-100';
-      case 'high': return 'text-orange-600 bg-orange-100';
-      case 'medium': return 'text-yellow-600 bg-yellow-100';
-      case 'low': return 'text-blue-600 bg-blue-100';
-      default: return 'text-gray-600 bg-gray-100';
-    }
-  };
-
-  const getCategoryColor = (category: string) => {
-    const colors: Record<string, string> = {
-      'beverage': 'bg-blue-500',
-      'food': 'bg-red-500',
-      'fruit': 'bg-green-500',
-      'vegetable': 'bg-emerald-500',
-      'electronics': 'bg-purple-500',
-      'furniture': 'bg-yellow-500',
-      'stationery': 'bg-indigo-500',
-      'toys': 'bg-pink-500',
-      'hygiene': 'bg-teal-500',
-      'staff': 'bg-gray-500'
-    };
-    return colors[category] || 'bg-gray-400';
   };
 
   const startDemoStream = () => {
+    if (!selectedVideo) {
+      setError('Please select a demo video first');
+      return;
+    }
     setIsLoading(true);
     setError(null);
     setStreamStatus('Starting...');
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-    }
-    fetch(`${API_BASE}/vision/stream/demo`, {
-      method: 'POST',
-      body: JSON.stringify({ video_source: selectedVideo }),
-      headers: { 'Content-Type': 'application/json' }
-    });
-    const es = new EventSource(`${API_BASE}/vision/stream/demo`);
+    stopVideoStream();
+    // Open EventSource with query params
+    const url = `${API_BASE}/vision/stream/demo?video_source=${encodeURIComponent(selectedVideo)}&fps=${playbackControls.fps}&loop=${playbackControls.loop}`;
+    const es = new EventSource(url);
     eventSourceRef.current = es;
     es.onmessage = (event) => {
       try {
-        const { detections, frame } = JSON.parse(event.data);
+        const data: VideoStreamData = JSON.parse(event.data);
+        if (data.error) {
+          setError(data.error);
+          setStreamStatus('Error');
+          setIsStreaming(false);
+          setIsLoading(false);
+          es.close();
+          return;
+        }
+        setCurrentVideoInfo({
+          source: data.video_source,
+          frame: data.frame_count,
+          totalFrames: data.total_frames,
+          fps: data.fps,
+          processingTime: data.processing_time
+        });
         setVisionResults({
-          detections: detections || [],
+          detections: data.detections || [],
           inventory_analysis: {
-            total_items: (detections && detections.length) || 0,
+            total_items: data.detections?.length || 0,
             category_breakdown: {},
             item_details: {},
-            detections: detections || [],
+            detections: data.detections || [],
             timestamp: new Date().toISOString()
           },
           anomalies: [],
-          annotated_frame: frame,
+          annotated_frame: data.frame,
           timestamp: new Date().toISOString()
         });
-        setIsStreaming(true);
-        setStreamStatus('Running (Demo)');
-        if (frame) {
-          updateCanvas(frame);
+        if (data.frame) {
+          updateCanvas(data.frame);
         }
+        setIsStreaming(true);
+        setStreamStatus('Running');
+        setIsLoading(false); // Set loading false on first frame
       } catch (error) {
-        console.error('Error parsing demo stream data:', error);
-        setError('Failed to parse demo stream data');
-        setStreamStatus('Demo Error');
+        setError('Failed to parse stream data');
+        setStreamStatus('Error');
         setIsStreaming(false);
+        setIsLoading(false);
+        es.close();
       }
     };
     es.onerror = (err) => {
-      setError('Failed to stream demo video');
-      setStreamStatus('Demo Unavailable');
+      setError('Stream connection failed');
+      setStreamStatus('Connection Error');
       setIsStreaming(false);
+      setIsLoading(false);
       es.close();
     };
-    setIsLoading(false);
+  };
+
+  const stopVideoStream = () => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+    setIsStreaming(false);
+    setStreamStatus('Stopped');
+    setPlaybackControls(prev => ({ ...prev, isPlaying: false }));
+    setCurrentVideoInfo(null);
+  };
+
+  const updateCanvas = (frameData: string) => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    
+    if (!canvas || !ctx) return;
+    
+    const img = new Image();
+    img.onload = () => {
+      // Set canvas size to match image
+      canvas.width = img.width;
+      canvas.height = img.height;
+      
+      // Draw the video frame
+      ctx.drawImage(img, 0, 0);
+      
+      // Draw detection overlays
+      if (visionResults?.detections) {
+        visionResults.detections.forEach(detection => {
+          const [x1, y1, x2, y2] = detection.bbox;
+          const confidence = detection.confidence;
+          const className = detection.class_name;
+          
+          // Choose color based on confidence
+          const color = confidence > 0.7 ? '#00ff00' : confidence > 0.5 ? '#ffff00' : '#ff0000';
+          
+          // Draw bounding box
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 2;
+          ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+          
+          // Draw label
+          ctx.fillStyle = color;
+          ctx.font = '14px Arial';
+          ctx.fillText(`${className}: ${(confidence * 100).toFixed(1)}%`, x1, y1 - 5);
+        });
+      }
+    };
+    
+    img.src = `data:image/jpeg;base64,${frameData}`;
+  };
+
+  const togglePlayback = () => {
+    if (isStreaming) {
+      stopVideoStream();
+    } else {
+      startDemoStream();
+    }
+  };
+
+  const changeFPS = (newFPS: number) => {
+    setPlaybackControls(prev => ({ ...prev, fps: newFPS }));
+    if (isStreaming) {
+      // Restart stream with new FPS
+      stopVideoStream();
+      setTimeout(() => startDemoStream(), 100);
+    }
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-lg p-6 h-full">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-6">
+    <div className="p-6 space-y-6">
+      <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold text-gray-800">Video Analytics</h2>
-          <p className="text-gray-600">Real-time computer vision for inventory tracking</p>
+          <h1 className="text-2xl font-bold text-gray-900">Video Analytics</h1>
+          <p className="text-gray-600">Real-time object detection and inventory tracking</p>
         </div>
+        
         <div className="flex items-center space-x-4">
-          <div className={`px-3 py-1 rounded-full text-sm font-medium ${
-            isStreaming ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-          }`}>
-            {streamStatus}
+          <div className="flex items-center space-x-2">
+            <label className="text-sm font-medium">FPS:</label>
+            <select
+              value={playbackControls.fps}
+              onChange={(e) => changeFPS(Number(e.target.value))}
+              className="border rounded px-2 py-1 text-sm"
+              disabled={isStreaming}
+            >
+              <option value={12}>12</option>
+              <option value={24}>24</option>
+              <option value={30}>30</option>
+              <option value={60}>60</option>
+              <option value={90}>90</option>
+              <option value={120}>120</option>
+              <option value={144}>144</option>
+              <option value={240}>240</option>
+              <option value={360}>360</option>
+              <option value={480}>480</option>
+              <option value={1000}>1000</option>
+            </select>
           </div>
+          
+          <div className="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              id="loop"
+              checked={playbackControls.loop}
+              onChange={(e) => setPlaybackControls(prev => ({ ...prev, loop: e.target.checked }))}
+              disabled={isStreaming}
+              className="rounded"
+            />
+            <label htmlFor="loop" className="text-sm font-medium">Loop</label>
+          </div>
+          
           <button
-            onClick={isStreaming ? stopVideoStream : startVideoStream}
+            onClick={togglePlayback}
             disabled={isLoading}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            className={`px-4 py-2 rounded font-medium ${
               isStreaming
-                ? 'bg-red-500 hover:bg-red-600 text-white'
-                : 'bg-green-500 hover:bg-green-600 text-white'
-            } disabled:opacity-50`}
+                ? 'bg-red-600 hover:bg-red-700 text-white'
+                : 'bg-blue-600 hover:bg-blue-700 text-white'
+            }`}
           >
-            {isLoading ? 'Loading...' : (isStreaming ? 'Stop Stream' : 'Start Stream')}
+            {isLoading ? 'Starting...' : isStreaming ? 'Stop' : 'Start'}
           </button>
         </div>
+      </div>
+
+      {/* Status and Error Display */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-4">
+          <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+            streamStatus === 'Running' ? 'bg-green-100 text-green-800' :
+            streamStatus === 'Stopped' ? 'bg-gray-100 text-gray-800' :
+            'bg-red-100 text-red-800'
+          }`}>
+            {streamStatus}
+          </span>
+          
+          {currentVideoInfo && (
+            <div className="text-sm text-gray-600">
+              <span>Video: {currentVideoInfo.source}</span>
+              <span className="mx-2">|</span>
+              <span>Frame: {currentVideoInfo.frame}/{currentVideoInfo.totalFrames}</span>
+              <span className="mx-2">|</span>
+              <span>FPS: {currentVideoInfo.fps}</span>
+              <span className="mx-2">|</span>
+              <span>Processing: {currentVideoInfo.processingTime.toFixed(2)}ms</span>
+            </div>
+          )}
       </div>
 
       {error && (
-        <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
+          <div className="text-red-600 text-sm bg-red-50 px-3 py-1 rounded">
           {error}
         </div>
       )}
+      </div>
 
-      {/* Tabs */}
-      <div className="flex space-x-1 mb-6 bg-gray-100 p-1 rounded-lg">
-        {[
-          { id: 'live', label: 'Live Feed', icon: '📹' },
-          { id: 'inventory', label: 'Inventory', icon: '📦' },
-          { id: 'anomalies', label: 'Anomalies', icon: '⚠️' },
-          { id: 'analytics', label: 'Analytics', icon: '📊' }
-        ].map((tab) => (
+      {/* Video Selection */}
+      <div className="flex items-center space-x-4">
+        <label className="font-medium">Select Demo Video:</label>
+        <select
+          value={selectedVideo}
+          onChange={(e) => setSelectedVideo(e.target.value)}
+          className="border rounded px-3 py-2 min-w-[200px]"
+          disabled={isStreaming}
+        >
+          {availableVideos.map(video => (
+            <option key={video.value} value={video.value}>
+              {video.label}
+            </option>
+          ))}
+        </select>
+        
+        <button
+          onClick={startDemoStream}
+          disabled={isLoading || !selectedVideo || isStreaming}
+          className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+        >
+          Start Demo Stream
+        </button>
+      </div>
+
+      {/* Tab Navigation */}
+      <div className="border-b border-gray-200">
+        <nav className="-mb-px flex space-x-8">
+          {[
+            { id: 'live', label: 'Live Feed' },
+            { id: 'inventory', label: 'Inventory' },
+            { id: 'anomalies', label: 'Anomalies' },
+            { id: 'analytics', label: 'Analytics' }
+          ].map(tab => (
           <button
             key={tab.id}
             onClick={() => setSelectedTab(tab.id as any)}
-            className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors ${
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
               selectedTab === tab.id
-                ? 'bg-white text-blue-600 shadow-sm'
-                : 'text-gray-600 hover:text-gray-800'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             }`}
           >
-            <span className="mr-2">{tab.icon}</span>
             {tab.label}
           </button>
         ))}
+        </nav>
       </div>
 
-      {/* Content */}
       <div className="space-y-6">
         {/* Live Feed Tab */}
         {selectedTab === 'live' && (
@@ -340,7 +385,7 @@ const VideoAnalyticsPanel: React.FC = () => {
               <canvas
                 ref={canvasRef}
                 className="w-full h-96 object-contain bg-black rounded"
-                style={{ maxHeight: '400px' }}
+                style={{ maxHeight: '500px' }}
               />
             </div>
             
@@ -371,6 +416,36 @@ const VideoAnalyticsPanel: React.FC = () => {
                 </div>
               </div>
             )}
+
+            {/* Detection Details */}
+            {visionResults?.detections && visionResults.detections.length > 0 && (
+              <div className="bg-white border rounded-lg p-6">
+                <h3 className="text-lg font-semibold mb-4">Recent Detections</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {visionResults.detections.slice(0, 9).map((detection, index) => (
+                    <div key={index} className="bg-gray-50 p-3 rounded-lg">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="font-medium text-gray-900">
+                            {detection.class_name}
+                          </div>
+                          <div className="text-sm text-gray-600">
+                            Confidence: {(detection.confidence * 100).toFixed(1)}%
+                          </div>
+                        </div>
+                        <div className={`px-2 py-1 rounded text-xs font-medium ${
+                          detection.confidence > 0.7 ? 'bg-green-100 text-green-800' :
+                          detection.confidence > 0.5 ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-red-100 text-red-800'
+                        }`}>
+                          {detection.inventory_category}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -379,54 +454,25 @@ const VideoAnalyticsPanel: React.FC = () => {
           <div className="space-y-6">
             {inventoryUpdate ? (
               <>
-                {/* Current Inventory */}
                 <div className="bg-white border rounded-lg p-6">
                   <h3 className="text-lg font-semibold mb-4">Current Inventory</h3>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {Object.entries(inventoryUpdate.current_inventory || {}).map(([category, count]) => (
-                      <div key={category} className="text-center p-3 bg-gray-50 rounded-lg">
-                        <div className={`w-4 h-4 rounded-full mx-auto mb-2 ${getCategoryColor(category)}`}></div>
-                        <div className="font-semibold text-lg">{count}</div>
-                        <div className="text-sm text-gray-600 capitalize">{category}</div>
+                    {Object.entries(inventoryUpdate.current_inventory).map(([category, count]) => (
+                      <div key={category} className="text-center p-4 bg-blue-50 rounded-lg">
+                        <div className="text-2xl font-bold text-blue-600">{count}</div>
+                        <div className="text-sm text-blue-600 capitalize">{category}</div>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                {/* Recent Changes */}
-                {inventoryUpdate.changes?.significant_changes?.length > 0 && (
+                {inventoryUpdate.alerts.length > 0 && (
                   <div className="bg-white border rounded-lg p-6">
-                    <h3 className="text-lg font-semibold mb-4">Recent Changes</h3>
+                    <h3 className="text-lg font-semibold mb-4">Alerts</h3>
                     <div className="space-y-2">
-                      {inventoryUpdate.changes.significant_changes.map((change: any, index: number) => (
-                        <div key={index} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                          <span className="font-medium capitalize">{change.category}</span>
-                          <span className={`font-semibold ${
-                            change.type === 'increase' ? 'text-green-600' : 'text-red-600'
-                          }`}>
-                            {change.type === 'increase' ? '+' : ''}{change.change} ({change.change_percentage.toFixed(1)}%)
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Alerts */}
-                {inventoryUpdate.alerts?.length > 0 && (
-                  <div className="bg-white border rounded-lg p-6">
-                    <h3 className="text-lg font-semibold mb-4">Active Alerts</h3>
-                    <div className="space-y-3">
-                      {inventoryUpdate.alerts.map((alert: any, index: number) => (
-                        <div key={index} className={`p-3 rounded-lg border-l-4 ${
-                          alert.severity === 'critical' ? 'border-red-500 bg-red-50' :
-                          alert.severity === 'high' ? 'border-orange-500 bg-orange-50' :
-                          'border-yellow-500 bg-yellow-50'
-                        }`}>
-                          <div className="font-medium">{alert.message}</div>
-                          <div className="text-sm text-gray-600 mt-1">
-                            {new Date(alert.timestamp).toLocaleTimeString()}
-                          </div>
+                      {inventoryUpdate.alerts.map((alert, index) => (
+                        <div key={index} className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                          <div className="text-red-800">{alert.message}</div>
                         </div>
                       ))}
                     </div>
@@ -443,35 +489,18 @@ const VideoAnalyticsPanel: React.FC = () => {
 
         {/* Anomalies Tab */}
         {selectedTab === 'anomalies' && (
-          <div className="space-y-4">
+          <div className="space-y-6">
             {visionResults?.anomalies && visionResults.anomalies.length > 0 ? (
+              <div className="bg-white border rounded-lg p-6">
+                <h3 className="text-lg font-semibold mb-4">Detected Anomalies</h3>
               <div className="space-y-4">
                 {visionResults.anomalies.map((anomaly, index) => (
-                  <div key={index} className={`p-4 rounded-lg border-l-4 ${
-                    anomaly.severity === 'critical' ? 'border-red-500 bg-red-50' :
-                    anomaly.severity === 'high' ? 'border-orange-500 bg-orange-50' :
-                    anomaly.severity === 'medium' ? 'border-yellow-500 bg-yellow-50' :
-                    'border-blue-500 bg-blue-50'
-                  }`}>
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h4 className="font-semibold capitalize">{anomaly.type.replace('_', ' ')}</h4>
-                        <p className="text-gray-700 mt-1">{anomaly.message}</p>
-                        {anomaly.details && (
-                          <div className="text-sm text-gray-600 mt-2">
-                            <pre className="whitespace-pre-wrap">{JSON.stringify(anomaly.details, null, 2)}</pre>
-                          </div>
-                        )}
-                      </div>
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getSeverityColor(anomaly.severity)}`}>
-                        {anomaly.severity}
-                      </span>
+                    <div key={index} className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                      <div className="font-medium text-red-800">{anomaly.type}</div>
+                      <div className="text-sm text-red-600 mt-1">{anomaly.description}</div>
                     </div>
-                    <div className="text-xs text-gray-500 mt-2">
-                      {new Date(anomaly.timestamp).toLocaleString()}
-                    </div>
+                  ))}
                   </div>
-                ))}
               </div>
             ) : (
               <div className="text-center py-8 text-gray-500">
@@ -550,27 +579,6 @@ const VideoAnalyticsPanel: React.FC = () => {
             )}
           </div>
         )}
-
-        {/* Demo Video Selection */}
-        <div className="mb-4">
-          <label className="mr-2 font-medium">Select Demo Video:</label>
-          <select
-            value={selectedVideo}
-            onChange={e => setSelectedVideo(e.target.value)}
-            className="border rounded px-2 py-1"
-          >
-            {availableVideos.map(v => (
-              <option key={v.value} value={v.value}>{v.label}</option>
-            ))}
-          </select>
-          <button
-            className="ml-4 px-4 py-2 bg-blue-600 text-white rounded"
-            onClick={startDemoStream}
-            disabled={isLoading || !selectedVideo}
-          >
-            Start Demo Stream
-          </button>
-        </div>
       </div>
     </div>
   );
