@@ -674,4 +674,51 @@ class BlockchainTraceabilityService {
   }
 }
 
+// --- DEMO MOCK DATA INJECTION ---
+export function injectMockProductTrace(productId: string) {
+  // Get the genesis block's hash from the blockchain array
+  // @ts-ignore
+  const genesisHash = blockchainService['blockchain'][0]?.hash || 'GENESIS';
+  const demoTraces = [
+    {
+      productId,
+      hash: 'mockhash1',
+      timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24 * 5).toISOString(),
+      location: 'Delhi Warehouse',
+      supplier: 'Acme Corp',
+      batchNumber: 'BATCH-001',
+      previousHash: genesisHash,
+      metadata: { action: 'manufactured', vehicleType: 'electric', packaging: 'recycled', routeOptimized: true },
+      carbonFootprint: 2.1,
+      sustainabilityScore: 92
+    },
+    {
+      productId,
+      hash: 'mockhash2',
+      timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24 * 3).toISOString(),
+      location: 'Mumbai Distribution Center',
+      supplier: 'Acme Corp',
+      batchNumber: 'BATCH-001',
+      previousHash: 'mockhash1',
+      metadata: { action: 'shipped', vehicleType: 'hybrid', packaging: 'recycled', routeOptimized: true },
+      carbonFootprint: 1.5,
+      sustainabilityScore: 88
+    },
+    {
+      productId,
+      hash: 'mockhash3',
+      timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24 * 1).toISOString(),
+      location: 'Bangalore Retail Store',
+      supplier: 'Acme Corp',
+      batchNumber: 'BATCH-001',
+      previousHash: 'mockhash2',
+      metadata: { action: 'delivered', vehicleType: 'diesel', packaging: 'biodegradable', routeOptimized: false },
+      carbonFootprint: 2.8,
+      sustainabilityScore: 75
+    }
+  ];
+  // @ts-ignore
+  blockchainService['productTraces'].set(productId, demoTraces);
+}
+
 export const blockchainService = new BlockchainTraceabilityService(); 

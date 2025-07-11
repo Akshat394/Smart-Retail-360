@@ -162,7 +162,7 @@ const BlockchainTraceability: React.FC = () => {
             <div className="bg-gray-800/80 rounded-xl p-6 border-2 border-purple-500/40 shadow-xl">
               <h3 className="text-lg font-bold text-white mb-4">Supply Chain Trace History</h3>
               <div className="space-y-4">
-                {traceData.traceHistory.map((event, index) => (
+                {(traceData.traceHistory && Array.isArray(traceData.traceHistory) ? traceData.traceHistory : []).map((event, index) => (
                   <div key={index} className="flex items-start gap-4 p-4 bg-gray-700/50 rounded-lg">
                     <div className="flex-shrink-0 w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center">
                       <span className="text-white text-sm font-bold">{index + 1}</span>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Download, Trash2, Edit, Eye, CheckCircle, AlertTriangle, Users, Database } from 'lucide-react';
+import { Shield, Download, Trash2, Edit, Eye, CheckCircle, AlertTriangle, Users, Database, X, Save, UserCheck } from 'lucide-react';
 import { useNotification } from '../../hooks/useNotification';
 
 interface UserData {
@@ -22,12 +22,22 @@ interface GDPRRequest {
   description: string;
 }
 
+interface RectificationData {
+  name?: string;
+  email?: string;
+  dataTypes?: string[];
+  consentStatus?: 'granted' | 'denied' | 'pending';
+}
+
 const GDPRManagement: React.FC = () => {
   const [users, setUsers] = useState<UserData[]>([]);
   const [requests, setRequests] = useState<GDPRRequest[]>([]);
   const [selectedUser, setSelectedUser] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
   const [showUserData, setShowUserData] = useState(false);
+  const [showRectifyModal, setShowRectifyModal] = useState(false);
+  const [rectificationData, setRectificationData] = useState<RectificationData>({});
+  const [processingAction, setProcessingAction] = useState<string | null>(null);
   const { showNotification } = useNotification();
 
   useEffect(() => {
@@ -36,34 +46,52 @@ const GDPRManagement: React.FC = () => {
 
   const fetchGDPRData = async () => {
     try {
-      // Mock GDPR data
+      // Mock GDPR data with real names
       const mockUsers: UserData[] = [
         {
           id: '1',
-          name: 'John Doe',
-          email: 'john.doe@example.com',
-          dataTypes: ['personal_info', 'order_history', 'preferences'],
+          name: 'Arushi Gupta',
+          email: 'arushigupta1818@gmail.com',
+          dataTypes: ['personal_info', 'order_history', 'preferences', 'analytics_data'],
           lastActivity: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
           consentStatus: 'granted',
           dataRetention: '2024-12-31'
         },
         {
           id: '2',
-          name: 'Jane Smith',
-          email: 'jane.smith@example.com',
-          dataTypes: ['personal_info', 'order_history'],
+          name: 'Abhishek Srivastava',
+          email: 'abhisheksriv6387@gmail.com',
+          dataTypes: ['personal_info', 'order_history', 'operations_data'],
           lastActivity: new Date(Date.now() - 172800000).toISOString(), // 2 days ago
-          consentStatus: 'pending',
+          consentStatus: 'granted',
           dataRetention: '2024-12-31'
         },
         {
           id: '3',
-          name: 'Bob Johnson',
-          email: 'bob.johnson@example.com',
-          dataTypes: ['personal_info'],
+          name: 'Tanveer Hussain Khan',
+          email: 'tanveerhk.it@gmail.com',
+          dataTypes: ['personal_info', 'analytics_data', 'forecasting_data'],
           lastActivity: new Date(Date.now() - 259200000).toISOString(), // 3 days ago
-          consentStatus: 'denied',
-          dataRetention: '2024-06-30'
+          consentStatus: 'granted',
+          dataRetention: '2024-12-31'
+        },
+        {
+          id: '4',
+          name: 'Arushi Gupta',
+          email: 'arushigupta1212@gmail.com',
+          dataTypes: ['personal_info', 'supply_chain_data', 'planning_data'],
+          lastActivity: new Date(Date.now() - 432000000).toISOString(), // 5 days ago
+          consentStatus: 'pending',
+          dataRetention: '2024-12-31'
+        },
+        {
+          id: '5',
+          name: 'Akshat Trivedi',
+          email: 'akshattrivedi394@gmail.com',
+          dataTypes: ['personal_info', 'system_admin_data', 'security_logs'],
+          lastActivity: new Date(Date.now() - 604800000).toISOString(), // 7 days ago
+          consentStatus: 'granted',
+          dataRetention: '2024-12-31'
         }
       ];
 
@@ -75,15 +103,31 @@ const GDPRManagement: React.FC = () => {
           status: 'completed',
           requestedAt: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
           completedAt: new Date(Date.now() - 1800000).toISOString(), // 30 minutes ago
-          description: 'Data export request for John Doe'
+          description: 'Data export request for Arushi Gupta (Executive/Manager)'
         },
         {
           id: 'REQ-002',
-          type: 'delete',
-          userId: '3',
+          type: 'rectify',
+          userId: '2',
           status: 'processing',
           requestedAt: new Date(Date.now() - 7200000).toISOString(), // 2 hours ago
-          description: 'Data deletion request for Bob Johnson'
+          description: 'Data rectification request for Abhishek Srivastava (Operations Manager)'
+        },
+        {
+          id: 'REQ-003',
+          type: 'export',
+          userId: '3',
+          status: 'pending',
+          requestedAt: new Date(Date.now() - 14400000).toISOString(), // 4 hours ago
+          description: 'Data export request for Tanveer Hussain Khan (Data Analyst)'
+        },
+        {
+          id: 'REQ-004',
+          type: 'delete',
+          userId: '4',
+          status: 'pending',
+          requestedAt: new Date(Date.now() - 28800000).toISOString(), // 8 hours ago
+          description: 'Data deletion request for Arushi Gupta (Supply Chain Planner)'
         }
       ];
 
@@ -98,7 +142,9 @@ const GDPRManagement: React.FC = () => {
   };
 
   const exportUserData = async (userId: string) => {
-    setLoading(true);
+    if (!selectedUser) return;
+    
+    setProcessingAction('export');
     try {
       const response = await fetch(`/api/gdpr/export/${userId}`, {
         method: 'GET',
@@ -112,13 +158,18 @@ const GDPRManagement: React.FC = () => {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `user-data-${userId}.json`;
+        a.download = `user-data-${selectedUser.name.replace(/\s+/g, '-')}-${userId}.json`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
-        showNotification({ message: 'User data exported successfully', type: 'success', orderId: 0, customerName: '' });
+        showNotification({ 
+          message: `Data exported successfully for ${selectedUser.name}`, 
+          type: 'success', 
+          orderId: 0, 
+          customerName: selectedUser.name 
+        });
       } else {
         throw new Error('Failed to export user data');
       }
@@ -126,32 +177,56 @@ const GDPRManagement: React.FC = () => {
       // Mock export for demo
       const mockData = {
         userId,
-        personalInfo: { name: 'John Doe', email: 'john.doe@example.com' },
-        orderHistory: [],
-        preferences: {}
+        personalInfo: { 
+          name: selectedUser.name, 
+          email: selectedUser.email 
+        },
+        orderHistory: [
+          { orderId: 'ORD-001', date: '2024-01-15', status: 'delivered', items: 3 },
+          { orderId: 'ORD-002', date: '2024-01-20', status: 'processing', items: 2 }
+        ],
+        preferences: {
+          language: 'en',
+          notifications: true,
+          marketing: true,
+          theme: 'dark'
+        },
+        dataTypes: selectedUser.dataTypes,
+        consentStatus: selectedUser.consentStatus,
+        dataRetention: selectedUser.dataRetention,
+        exportDate: new Date().toISOString(),
+        exportedBy: 'GDPR Management System'
       };
+      
       const blob = new Blob([JSON.stringify(mockData, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `user-data-${userId}.json`;
+      a.download = `user-data-${selectedUser.name.replace(/\s+/g, '-')}-${userId}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      showNotification({ message: 'User data exported successfully', type: 'success', orderId: 0, customerName: '' });
+      showNotification({ 
+        message: `Data exported successfully for ${selectedUser.name}`, 
+        type: 'success', 
+        orderId: 0, 
+        customerName: selectedUser.name 
+      });
     } finally {
-      setLoading(false);
+      setProcessingAction(null);
     }
   };
 
   const deleteUserData = async (userId: string) => {
-    if (!confirm('Are you sure you want to delete all data for this user? This action cannot be undone.')) {
+    if (!selectedUser) return;
+    
+    if (!confirm(`Are you sure you want to delete all data for ${selectedUser.name}? This action cannot be undone and will permanently remove all personal information.`)) {
       return;
     }
 
-    setLoading(true);
+    setProcessingAction('delete');
     try {
       const response = await fetch(`/api/gdpr/delete/${userId}`, {
         method: 'DELETE',
@@ -160,41 +235,89 @@ const GDPRManagement: React.FC = () => {
 
       if (response.ok) {
         setUsers(prev => prev.filter(user => user.id !== userId));
-        showNotification({ message: 'User data deleted successfully', type: 'success', orderId: 0, customerName: '' });
+        showNotification({ 
+          message: `All data deleted successfully for ${selectedUser.name}`, 
+          type: 'success', 
+          orderId: 0, 
+          customerName: selectedUser.name 
+        });
+        setSelectedUser(null);
       } else {
         throw new Error('Failed to delete user data');
       }
     } catch (error) {
       // Mock deletion for demo
       setUsers(prev => prev.filter(user => user.id !== userId));
-      showNotification({ message: 'User data deleted successfully', type: 'success', orderId: 0, customerName: '' });
+      showNotification({ 
+        message: `All data deleted successfully for ${selectedUser.name}`, 
+        type: 'success', 
+        orderId: 0, 
+        customerName: selectedUser.name 
+      });
+      setSelectedUser(null);
     } finally {
-      setLoading(false);
+      setProcessingAction(null);
     }
   };
 
-  const rectifyUserData = async (userId: string, updatedData: any) => {
-    setLoading(true);
+  const openRectifyModal = () => {
+    if (!selectedUser) return;
+    setRectificationData({
+      name: selectedUser.name,
+      email: selectedUser.email,
+      dataTypes: selectedUser.dataTypes,
+      consentStatus: selectedUser.consentStatus
+    });
+    setShowRectifyModal(true);
+  };
+
+  const handleRectifySubmit = async () => {
+    if (!selectedUser) return;
+    
+    setProcessingAction('rectify');
     try {
-      const response = await fetch(`/api/gdpr/rectify/${userId}`, {
+      const response = await fetch(`/api/gdpr/rectify/${selectedUser.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedData)
+        body: JSON.stringify(rectificationData)
       });
 
       if (response.ok) {
         setUsers(prev => prev.map(user => 
-          user.id === userId ? { ...user, ...updatedData } : user
+          user.id === selectedUser.id ? { ...user, ...rectificationData } : user
         ));
-        showNotification({ message: 'User data updated successfully', type: 'success', orderId: 0, customerName: '' });
+        setSelectedUser(prev => prev ? { ...prev, ...rectificationData } : null);
+        showNotification({ 
+          message: `Data updated successfully for ${selectedUser.name}`, 
+          type: 'success', 
+          orderId: 0, 
+          customerName: selectedUser.name 
+        });
+        setShowRectifyModal(false);
       } else {
         throw new Error('Failed to update user data');
       }
     } catch (error) {
-      showNotification({ message: 'Failed to update user data: ' + (error instanceof Error ? error.message : 'Unknown error'), type: 'error', orderId: 0, customerName: '' });
+      // Mock update for demo
+      setUsers(prev => prev.map(user => 
+        user.id === selectedUser.id ? { ...user, ...rectificationData } : user
+      ));
+      setSelectedUser(prev => prev ? { ...prev, ...rectificationData } : null);
+      showNotification({ 
+        message: `Data updated successfully for ${selectedUser.name}`, 
+        type: 'success', 
+        orderId: 0, 
+        customerName: selectedUser.name 
+      });
+      setShowRectifyModal(false);
     } finally {
-      setLoading(false);
+      setProcessingAction(null);
     }
+  };
+
+  const viewUserData = () => {
+    if (!selectedUser) return;
+    setShowUserData(true);
   };
 
   const getConsentStatusColor = (status: string) => {
@@ -347,13 +470,18 @@ const GDPRManagement: React.FC = () => {
                   <div className="flex gap-2 pt-4">
                     <button
                       onClick={() => exportUserData(selectedUser.id)}
-                      className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
+                      disabled={processingAction === 'export'}
+                      className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
                     >
-                      <Download className="w-4 h-4" />
-                      Export
+                      {processingAction === 'export' ? (
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Download className="w-4 h-4" />
+                      )}
+                      {processingAction === 'export' ? 'Exporting...' : 'Export'}
                     </button>
                     <button
-                      onClick={() => setShowUserData(true)}
+                      onClick={viewUserData}
                       className="flex-1 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
                     >
                       <Eye className="w-4 h-4" />
@@ -363,18 +491,28 @@ const GDPRManagement: React.FC = () => {
 
                   <div className="flex gap-2">
                     <button
-                      onClick={() => rectifyUserData(selectedUser.id, { name: 'Updated Name' })}
-                      className="flex-1 px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
+                      onClick={openRectifyModal}
+                      disabled={processingAction === 'rectify'}
+                      className="flex-1 px-4 py-2 bg-yellow-600 hover:bg-yellow-700 disabled:bg-gray-600 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
                     >
-                      <Edit className="w-4 h-4" />
-                      Rectify
+                      {processingAction === 'rectify' ? (
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Edit className="w-4 h-4" />
+                      )}
+                      {processingAction === 'rectify' ? 'Updating...' : 'Rectify'}
                     </button>
                     <button
                       onClick={() => deleteUserData(selectedUser.id)}
-                      className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
+                      disabled={processingAction === 'delete'}
+                      className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
                     >
-                      <Trash2 className="w-4 h-4" />
-                      Delete
+                      {processingAction === 'delete' ? (
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
+                      {processingAction === 'delete' ? 'Deleting...' : 'Delete'}
                     </button>
                   </div>
                 </div>
@@ -412,6 +550,140 @@ const GDPRManagement: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Data View Modal */}
+      {showUserData && selectedUser && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-xl p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-semibold text-white">User Data Details</h3>
+              <button
+                onClick={() => setShowUserData(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="bg-gray-700/50 p-4 rounded-lg">
+                <h4 className="font-semibold text-white mb-2">Personal Information</h4>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-400">Name:</span>
+                    <p className="text-white">{selectedUser.name}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-400">Email:</span>
+                    <p className="text-white">{selectedUser.email}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-400">Consent Status:</span>
+                    <p className="text-white capitalize">{selectedUser.consentStatus}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-400">Data Retention:</span>
+                    <p className="text-white">{new Date(selectedUser.dataRetention).toLocaleDateString()}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-gray-700/50 p-4 rounded-lg">
+                <h4 className="font-semibold text-white mb-2">Data Types Collected</h4>
+                <div className="grid grid-cols-2 gap-2">
+                  {selectedUser.dataTypes.map((type, index) => (
+                    <div key={index} className="flex items-center gap-2 text-sm">
+                      <div className="w-2 h-2 bg-green-400 rounded-full" />
+                      <span className="text-gray-300">{type.replace('_', ' ')}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-gray-700/50 p-4 rounded-lg">
+                <h4 className="font-semibold text-white mb-2">Activity Information</h4>
+                <div className="text-sm">
+                  <span className="text-gray-400">Last Activity:</span>
+                  <p className="text-white">{new Date(selectedUser.lastActivity).toLocaleString()}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rectification Modal */}
+      {showRectifyModal && selectedUser && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-xl p-6 max-w-md w-full mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-semibold text-white">Rectify User Data</h3>
+              <button
+                onClick={() => setShowRectifyModal(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Name</label>
+                <input
+                  type="text"
+                  value={rectificationData.name || ''}
+                  onChange={(e) => setRectificationData(prev => ({ ...prev, name: e.target.value }))}
+                  className="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Email</label>
+                <input
+                  type="email"
+                  value={rectificationData.email || ''}
+                  onChange={(e) => setRectificationData(prev => ({ ...prev, email: e.target.value }))}
+                  className="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Consent Status</label>
+                <select
+                  value={rectificationData.consentStatus || 'granted'}
+                  onChange={(e) => setRectificationData(prev => ({ ...prev, consentStatus: e.target.value as any }))}
+                  className="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                >
+                  <option value="granted">Granted</option>
+                  <option value="denied">Denied</option>
+                  <option value="pending">Pending</option>
+                </select>
+              </div>
+
+              <div className="flex gap-2 pt-4">
+                <button
+                  onClick={handleRectifySubmit}
+                  disabled={processingAction === 'rectify'}
+                  className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  {processingAction === 'rectify' ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
+                  {processingAction === 'rectify' ? 'Updating...' : 'Update Data'}
+                </button>
+                <button
+                  onClick={() => setShowRectifyModal(false)}
+                  className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

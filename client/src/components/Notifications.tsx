@@ -48,7 +48,7 @@ const Notifications: React.FC = () => {
     const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     const wsHost = window.location.hostname;
     // Use port 5000 explicitly since window.location.host might not include the port in development
-    const wsPort = window.location.port || '5000';
+    const wsPort = window.location.port && window.location.port !== '' ? window.location.port : '5000';
     const ws = new WebSocket(`${wsProtocol}://${wsHost}:${wsPort}/ws`);
     wsRef.current = ws;
     ws.onmessage = (event: MessageEvent) => {

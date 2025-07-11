@@ -1,3 +1,195 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* 3D Transform Classes */
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+.transform-style-preserve-3d {
+  transform-style: preserve-3d;
+}
+
+.translate-z-40 {
+  transform: translateZ(40px);
+}
+
+.translate-z-neg-40 {
+  transform: translateZ(-40px);
+}
+
+.translate-x-neg-40 {
+  transform: translateX(-40px);
+}
+
+.translate-x-40 {
+  transform: translateX(40px);
+}
+
+.translate-y-neg-40 {
+  transform: translateY(-40px);
+}
+
+.translate-y-40 {
+  transform: translateY(40px);
+}
+
+.rotate-y-180 {
+  transform: rotateY(180deg);
+}
+
+.rotate-y-neg-90 {
+  transform: rotateY(-90deg);
+}
+
+.rotate-y-90 {
+  transform: rotateY(90deg);
+}
+
+.rotate-x-90 {
+  transform: rotateX(90deg);
+}
+
+.rotate-x-neg-90 {
+  transform: rotateX(-90deg);
+}
+
+/* Clean 3D Warehouse Styles */
+.warehouse-zone {
+  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.warehouse-zone:hover {
+  transform: translateZ(10px) scale(1.05);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+}
+
+.robot-3d {
+  transition: all 1s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.robot-3d:hover {
+  transform: translateZ(5px) scale(1.1);
+}
+
+/* 3D Scene Optimizations */
+.scene-3d {
+  transform-style: preserve-3d;
+  perspective: 1000px;
+}
+
+/* Smooth View Transitions */
+.view-transition {
+  transition: transform 1s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Clean Grid Pattern */
+.grid-clean {
+  background-image: 
+    linear-gradient(rgba(59, 130, 246, 0.1) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(59, 130, 246, 0.1) 1px, transparent 1px);
+  background-size: 50px 50px;
+}
+
+/* 3D Lighting Effects */
+.light-source {
+  background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
+}
+
+/* 3D Shadow Effects */
+.shadow-3d {
+  box-shadow: 
+    0 10px 20px rgba(0, 0, 0, 0.3),
+    0 6px 6px rgba(0, 0, 0, 0.2);
+}
+
+/* 3D Text Effects */
+.text-3d {
+  text-shadow: 
+    0 1px 0 #ccc,
+    0 2px 0 #c9c9c9,
+    0 3px 0 #bbb,
+    0 4px 0 #b9b9b9,
+    0 5px 0 #aaa,
+    0 6px 1px rgba(0,0,0,.1),
+    0 0 5px rgba(0,0,0,.1),
+    0 1px 3px rgba(0,0,0,.3),
+    0 3px 5px rgba(0,0,0,.2),
+    0 5px 10px rgba(0,0,0,.25),
+    0 10px 10px rgba(0,0,0,.2),
+    0 20px 20px rgba(0,0,0,.15);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1f2937;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #4b5563;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
+}
+
+/* Smooth transitions */
+* {
+  transition: all 0.2s ease-in-out;
+}
+
+/* 3D Performance Optimizations */
+.transform-gpu {
+  transform: translateZ(0);
+  will-change: transform;
+}
+
+.backface-hidden {
+  backface-visibility: hidden;
+}
+
+/* Clean Animation Classes */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* 3D Hover Effects */
+.hover-3d:hover {
+  transform: translateZ(20px) rotateX(5deg) rotateY(5deg);
+  transition: transform 0.3s ease;
+}
+
+/* 3D Glow Effects */
+.glow-3d {
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+}
+
+.glow-green-3d {
+  box-shadow: 0 0 20px rgba(34, 197, 94, 0.5);
+}
+
+.glow-red-3d {
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.5);
+}
+
+/* 3D Depth Layers */
+.depth-1 { z-index: 1; }
+.depth-2 { z-index: 2; }
+.depth-3 { z-index: 3; }
+.depth-4 { z-index: 4; }
+.depth-5 { z-index: 5; }

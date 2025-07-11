@@ -109,7 +109,7 @@ class ExternalIntegrationsService extends EventEmitter {
   // ERP System Integration (SAP/Oracle)
   public async getERPProducts(): Promise<ERPProduct[]> {
     // Always return mock data for local/demo/dev
-    return this.getMockERPProducts();
+      return this.getMockERPProducts();
   }
 
   public async createERPPurchaseOrder(order: Omit<ERPPurchaseOrder, 'id' | 'status' | 'createdAt'>): Promise<ERPPurchaseOrder> {
@@ -459,21 +459,30 @@ class ExternalIntegrationsService extends EventEmitter {
   }
 
   private async syncInventoryChange(change: any): Promise<void> {
+    const quantity = Number.isFinite(change.quantity) ? change.quantity : 0;
+    if (!Number.isFinite(change.quantity)) {
+      console.warn('Invalid quantity in inventory_update, defaulting to 0:', change);
+    }
     await db.update(inventory)
       .set({
-        quantity: change.quantity,
+        quantity,
         lastUpdated: new Date()
       })
       .where(eq(inventory.productName, change.productId));
   }
 
   private async syncOrderChange(change: any): Promise<void> {
+    const orderId = Number.isFinite(Number(change.orderId)) ? Number(change.orderId) : null;
+    if (orderId === null) {
+      console.warn('Invalid orderId in order_update, skipping update:', change);
+      return;
+    }
     await db.update(clickCollectOrders)
       .set({
         status: change.status,
         updatedAt: new Date()
       })
-      .where(eq(clickCollectOrders.id, parseInt(change.orderId)));
+      .where(eq(clickCollectOrders.id, orderId));
   }
 
   private async syncLocationChange(change: any): Promise<void> {

@@ -27,7 +27,8 @@ import {
   ClipboardList,
   Code,
   Camera,
-  Users
+  Users,
+  Bot
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
@@ -69,19 +70,19 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
     
     const rolePermissions = {
       admin: [
-        'dashboard', 'ai-command', 'routes', 'analytics', 'digital-twin', 
+        'dashboard', 'ai-command', 'routes', 'route-optimization', 'analytics', 'digital-twin', 
         'blockchain', 'edge-computing', 'security', 'compliance', 
         'sustainability', 'warehouse', 'logistics', 'inventory', 
         'orders', 'omnichannel-analytics', 'robotics', 'video-analytics', 'ar-vr', 'settings', 'erp-products', 'wms-dashboard'
       ],
       manager: [
-        'dashboard', 'ai-command', 'routes', 'analytics', 'digital-twin',
+        'dashboard', 'ai-command', 'routes', 'route-optimization', 'analytics', 'digital-twin',
         'blockchain', 'edge-computing', 'security', 'compliance',
         'sustainability', 'warehouse', 'logistics', 'inventory',
         'orders', 'omnichannel-analytics', 'robotics', 'video-analytics', 'ar-vr', 'settings', 'erp-products', 'wms-dashboard'
       ],
       operations: [
-        'dashboard', 'ai-command', 'routes', 'warehouse', 'logistics',
+        'dashboard', 'ai-command', 'routes', 'route-optimization', 'warehouse', 'logistics',
         'inventory', 'orders', 'omnichannel-analytics', 'robotics', 'video-analytics', 'settings'
       ],
       analyst: [
@@ -90,7 +91,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
       ],
       planner: [
         'dashboard', 'ai-command', 'analytics', 'digital-twin',
-        'routes', 'logistics', 'inventory', 'sustainability', 'omnichannel-analytics'
+        'routes', 'route-optimization', 'logistics', 'inventory', 'sustainability', 'omnichannel-analytics'
       ],
       viewer: [
         'dashboard', 'ai-command', 'analytics', 'sustainability', 'omnichannel-analytics'

@@ -1,389 +1,599 @@
-import React, { useRef, useEffect, useState } from 'react';
-import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
-import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader';
-import { apiService } from '../../services/api';
-import { Warehouse as WarehouseIcon, Award } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
+import { 
+  Package, 
+  Truck, 
+  Users, 
+  Activity, 
+  Thermometer, 
+  Zap, 
+  AlertTriangle,
+  MapPin,
+  Clock,
+  TrendingUp,
+  Battery,
+  Wifi,
+  Settings,
+  Eye,
+  EyeOff
+} from 'lucide-react';
+import RobotView3D from './RobotView3D';
+
+interface Zone {
+  id: string;
+  name: string;
+  type: 'storage' | 'packing' | 'shipping' | 'receiving' | 'robotics';
+  status: 'active' | 'warning' | 'error' | 'maintenance';
+  occupancy: number;
+  capacity: number;
+  temperature: number;
+  humidity: number;
+  co2Level: number;
+  robots: number;
+  efficiency: number;
+  lastUpdated: string;
+}
 
 interface Robot {
   id: string;
-  position: { x: number; y: number; z: number };
-  status: 'idle' | 'active' | 'maintenance';
-  health: number;
+  name: string;
+  type: 'picker' | 'mover' | 'sorter';
+  status: 'active' | 'charging' | 'maintenance' | 'idle';
+  battery: number;
+  location: { x: number; y: number };
+  currentTask: string;
+  efficiency: number;
 }
 
-const Warehouse3D: React.FC = () => {
-  const mountRef = useRef<HTMLDivElement>(null);
-  const sceneRef = useRef<THREE.Scene | null>(null);
-  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-  const controlsRef = useRef<OrbitControls | null>(null);
-  const robotsRef = useRef<{ [id: string]: THREE.Mesh }>({});
-  const fbxModelUrl = '/uploads_files_2883707_warehouse6.fbx';
+interface Sensor {
+  id: string;
+  type: 'temperature' | 'humidity' | 'co2' | 'motion' | 'light';
+  value: number;
+  unit: string;
+  status: 'normal' | 'warning' | 'critical';
+  location: { x: number; y: number };
+}
 
+const Warehouse2D: React.FC = () => {
+  const [zones, setZones] = useState<Zone[]>([]);
   const [robots, setRobots] = useState<Robot[]>([]);
-  const [robotPaths, setRobotPaths] = useState<{ [id: string]: { path: { x: number; y: number }[]; progress: number } }>({});
-  const [co2Data, setCo2Data] = useState<any[]>([]);
-  const [iotZones, setIotZones] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [fbxError, setFbxError] = useState<string | null>(null);
-
-  // Add grid and pathfinding utilities
-  const GRID_SIZE = 20;
-  const GRID_SPACING = 4;
-  function gridToWorld(x: number, y: number) {
-    return { x: (x - GRID_SIZE / 2) * GRID_SPACING, z: (y - GRID_SIZE / 2) * GRID_SPACING };
-  }
-  function worldToGrid(x: number, z: number) {
-    return {
-      x: Math.round(x / GRID_SPACING + GRID_SIZE / 2),
-      y: Math.round(z / GRID_SPACING + GRID_SIZE / 2)
-    };
-  }
-  // Simple Dijkstra for open grid (no obstacles)
-  function dijkstra(start: [number, number], end: [number, number]) {
-    const queue: [number, number][] = [start];
-    const visited = new Set();
-    const prev: Record<string, [number, number] | null> = {};
-    prev[start.join(',')] = null;
-    while (queue.length) {
-      const [x, y] = queue.shift()!;
-      if (x === end[0] && y === end[1]) break;
-      for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
-        const nx = x + dx, ny = y + dy;
-        if (nx < 0 || ny < 0 || nx >= GRID_SIZE || ny >= GRID_SIZE) continue;
-        const key = `${nx},${ny}`;
-        if (!visited.has(key)) {
-          queue.push([nx, ny]);
-          visited.add(key);
-          prev[key] = [x, y];
-        }
-      }
-    }
-    // Reconstruct path
-    let path: [number, number][] = [];
-    let cur: [number, number] | null = end;
-    while (cur && prev[cur.join(',')]) {
-      path.push(cur);
-      cur = prev[cur.join(',')];
-    }
-    path.push(start);
-    return path.reverse();
-  }
+  const [sensors, setSensors] = useState<Sensor[]>([]);
+  const [selectedZone, setSelectedZone] = useState<Zone | null>(null);
+  const [showSensors, setShowSensors] = useState(true);
+  const [showRobots, setShowRobots] = useState(true);
+  const [viewMode, setViewMode] = useState<'overview' | 'detailed' | 'analytics'>('overview');
+  const [timeOfDay, setTimeOfDay] = useState<'day' | 'night'>('day');
+  const [viewType, setViewType] = useState<'overview' | 'robot'>('overview');
 
   useEffect(() => {
-    if (!mountRef.current) return;
-    setLoading(true);
-    setFbxError(null);
-
-    let fbxLoaded = false;
-    let animationFrameId: number;
-
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x1a1a1a);
-    sceneRef.current = scene;
-
-    const camera = new THREE.PerspectiveCamera(
-      75,
-      mountRef.current.clientWidth / mountRef.current.clientHeight,
-      0.1,
-      1000
-    );
-    camera.position.set(50, 30, 50);
-    cameraRef.current = camera;
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(mountRef.current.clientWidth, mountRef.current.clientHeight);
-    renderer.shadowMap.enabled = true;
-    mountRef.current.appendChild(renderer.domElement);
-    rendererRef.current = renderer;
-
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controlsRef.current = controls;
-
-    // Lights
-    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-    const dirLight = new THREE.DirectionalLight(0xffffff, 1);
-    dirLight.position.set(30, 100, 40);
-    dirLight.castShadow = true;
-    scene.add(dirLight);
-
-    // Floor
-    const floor = new THREE.Mesh(
-      new THREE.PlaneGeometry(100, 100),
-      new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.3, roughness: 0.6 })
-    );
-    floor.rotation.x = -Math.PI / 2;
-    floor.receiveShadow = true;
-    scene.add(floor);
-
-    // Load FBX with error handling and timeout
-    const loader = new FBXLoader();
-    let fbxTimeout = setTimeout(() => {
-      if (!fbxLoaded) {
-        setFbxError('3D warehouse model took too long to load. Showing basic view.');
-        setLoading(false);
-      }
-    }, 7000); // 7 seconds max
-    try {
-      loader.load(
-        fbxModelUrl,
-        (fbx) => {
-          fbxLoaded = true;
-          clearTimeout(fbxTimeout);
-          fbx.scale.set(0.05, 0.05, 0.05);
-          fbx.traverse(child => {
-            if ((child as THREE.Mesh).isMesh) {
-              child.castShadow = true;
-              child.receiveShadow = true;
-            }
-          });
-          scene.add(fbx);
-          setLoading(false);
-        },
-        undefined,
-        (err) => {
-          setFbxError('Failed to load 3D warehouse model. Showing basic view.');
-          setLoading(false);
-        }
-      );
-    } catch (err) {
-      setFbxError('Error loading 3D warehouse model. Showing basic view.');
-      setLoading(false);
-    }
-
-    // Animate robots
-    const clock = new THREE.Clock();
-    const animate = () => {
-      try {
-        animationFrameId = requestAnimationFrame(animate);
-        const time = clock.getElapsedTime();
-        Object.entries(robotsRef.current).forEach(([id, mesh], idx) => {
-          const robot = robots.find(r => r.id === id);
-          if (!robot) return;
-          const pathObj = robotPaths[id];
-          if (pathObj && pathObj.path.length > 1) {
-            // Progress along path
-            pathObj.progress = Math.min(pathObj.progress + 0.002, 1);
-            const pathIdx = Math.floor(pathObj.progress * (pathObj.path.length - 1));
-            const { x, y } = pathObj.path[pathIdx];
-            const world = gridToWorld(x, y);
-            mesh.position.x = world.x;
-            mesh.position.z = world.z;
-            mesh.position.y = 1 + Math.sin(time * 2 + idx) * 0.5;
-            mesh.rotation.y += 0.05;
-            // Draw path trail (as spheres, limit to 20 per robot)
-            if (scene && !mesh.userData.trailDrawn) {
-              pathObj.path.forEach((pt, i) => {
-                if (i % Math.ceil(pathObj.path.length / 20) === 0) { // max 20 spheres
-                  let co2 = co2Data[idx % co2Data.length]?.co2 || 0;
-                  let color = co2 < 7 ? 0x00ff00 : co2 < 12 ? 0xffff00 : 0xff0000;
-                  const sphere = new THREE.Mesh(
-                    new THREE.SphereGeometry(0.2, 8, 8),
-                    new THREE.MeshBasicMaterial({ color })
-                  );
-                  const w = gridToWorld(pt.x, pt.y);
-                  sphere.position.set(w.x, 0.2, w.z);
-                  scene.add(sphere);
-                }
-              });
-              mesh.userData.trailDrawn = true;
-            }
-          } else if (robot.status === 'active') {
-            const radius = 10 + idx * 5;
-            mesh.position.x = Math.cos(time + idx) * radius;
-            mesh.position.z = Math.sin(time + idx) * radius;
-            mesh.position.y = 1 + Math.sin(time * 2 + idx) * 0.5;
-            mesh.rotation.y += 0.05;
-          } else if (robot.status === 'idle') {
-            mesh.position.y = 1 + Math.abs(Math.sin(time * 2 + idx)) * 1.5;
-          } else if (robot.status === 'maintenance') {
-            const intensity = 0.5 + 0.5 * Math.abs(Math.sin(time * 3));
-            const mat = mesh.material as THREE.MeshStandardMaterial;
-            mat.color.setRGB(intensity, 0, 0);
-          }
-        });
-        controls.update();
-        renderer.render(scene, camera);
-      } catch (err) {
-        setFbxError('Error in 3D rendering loop. Showing basic view.');
-        setLoading(false);
-      }
-    };
-    animate();
-
-    // Cleanup
-    return () => {
-      if (renderer.domElement && mountRef.current) {
-        mountRef.current.removeChild(renderer.domElement);
-      }
-      renderer.dispose();
-      clearTimeout(fbxTimeout);
-      cancelAnimationFrame(animationFrameId);
-    };
-  }, [robots, robotPaths, co2Data]);
-
-  // Load R1, R2, R3
-  useEffect(() => {
-    const loadRobots = async () => {
-      try {
-        const data = await apiService.getRobotHealthData() as any[];
-        const filtered = data.filter((r: any) => ['R1', 'R2', 'R3'].includes(r.robotId));
-        const mapped = filtered.map((r: any) => ({
-          id: r.robotId,
-          health: r.health,
-          status: (r.health > 80 ? 'active' : r.health > 50 ? 'idle' : 'maintenance') as 'active' | 'idle' | 'maintenance',
-          position: { x: Math.random() * 60 - 30, y: 1, z: Math.random() * 60 - 30 }
-        }));
-        setRobots(mapped);
-      } catch {
-        setRobots([
-          { id: 'R1', position: { x: -20, y: 1, z: -20 }, status: 'active', health: 90 },
-          { id: 'R2', position: { x: 20, y: 1, z: -20 }, status: 'idle', health: 70 },
-          { id: 'R3', position: { x: 0, y: 1, z: 20 }, status: 'maintenance', health: 45 },
-        ]);
-      }
-    };
-
-    loadRobots();
-    const interval = setInterval(loadRobots, 10000);
+    initializeWarehouse();
+    const interval = setInterval(updateWarehouseData, 5000);
     return () => clearInterval(interval);
   }, []);
 
-  // On robots load, generate a path for each robot
-  useEffect(() => {
-    const newPaths: { [id: string]: { path: { x: number; y: number }[]; progress: number } } = {};
-    robots.forEach((robot, idx) => {
-      // Mock: start at (2+idx*5,2), end at (GRID_SIZE-3-idx*5,GRID_SIZE-3)
-      const start: [number, number] = [2 + idx * 5, 2];
-      const end: [number, number] = [GRID_SIZE - 3 - idx * 5, GRID_SIZE - 3];
-      const path = dijkstra(start, end).map(([x, y]) => ({ x, y }));
-      newPaths[robot.id] = { path, progress: 0 };
-    });
-    setRobotPaths(newPaths);
-  }, [robots]);
+  const initializeWarehouse = () => {
+    const mockZones: Zone[] = [
+      {
+        id: 'zone-1',
+        name: 'Storage A',
+        type: 'storage',
+        status: 'active',
+        occupancy: 85,
+        capacity: 100,
+        temperature: 22,
+        humidity: 45,
+        co2Level: 450,
+        robots: 3,
+        efficiency: 92,
+        lastUpdated: new Date().toISOString()
+      },
+      {
+        id: 'zone-2',
+        name: 'Storage B',
+        type: 'storage',
+        status: 'warning',
+        occupancy: 95,
+        capacity: 100,
+        temperature: 24,
+        humidity: 52,
+        co2Level: 520,
+        robots: 2,
+        efficiency: 87,
+        lastUpdated: new Date().toISOString()
+      },
+      {
+        id: 'zone-3',
+        name: 'Packing Station',
+        type: 'packing',
+        status: 'active',
+        occupancy: 60,
+        capacity: 80,
+        temperature: 23,
+        humidity: 48,
+        co2Level: 480,
+        robots: 4,
+        efficiency: 94,
+        lastUpdated: new Date().toISOString()
+      },
+      {
+        id: 'zone-4',
+        name: 'Shipping Dock',
+        type: 'shipping',
+        status: 'active',
+        occupancy: 40,
+        capacity: 60,
+        temperature: 21,
+        humidity: 42,
+        co2Level: 410,
+        robots: 2,
+        efficiency: 89,
+        lastUpdated: new Date().toISOString()
+      },
+      {
+        id: 'zone-5',
+        name: 'Receiving Bay',
+        type: 'receiving',
+        status: 'active',
+        occupancy: 30,
+        capacity: 50,
+        temperature: 20,
+        humidity: 40,
+        co2Level: 390,
+        robots: 1,
+        efficiency: 91,
+        lastUpdated: new Date().toISOString()
+      },
+      {
+        id: 'zone-6',
+        name: 'Robotics Hub',
+        type: 'robotics',
+        status: 'active',
+        occupancy: 70,
+        capacity: 90,
+        temperature: 25,
+        humidity: 55,
+        co2Level: 550,
+        robots: 6,
+        efficiency: 96,
+        lastUpdated: new Date().toISOString()
+      }
+    ];
 
-  // Render robots
-  useEffect(() => {
-    if (!sceneRef.current) return;
+    const mockRobots: Robot[] = [
+      {
+        id: 'robot-1',
+        name: 'Picker-01',
+        type: 'picker',
+        status: 'active',
+        battery: 85,
+        location: { x: 25, y: 30 },
+        currentTask: 'Picking items for order #12345',
+        efficiency: 94
+      },
+      {
+        id: 'robot-2',
+        name: 'Mover-02',
+        type: 'mover',
+        status: 'charging',
+        battery: 45,
+        location: { x: 75, y: 40 },
+        currentTask: 'Moving pallets to storage',
+        efficiency: 88
+      },
+      {
+        id: 'robot-3',
+        name: 'Sorter-03',
+        type: 'sorter',
+        status: 'active',
+        battery: 92,
+        location: { x: 50, y: 70 },
+        currentTask: 'Sorting packages by destination',
+        efficiency: 96
+      },
+      {
+        id: 'robot-4',
+        name: 'Picker-04',
+        type: 'picker',
+        status: 'maintenance',
+        battery: 20,
+        location: { x: 80, y: 80 },
+        currentTask: 'Maintenance scheduled',
+        efficiency: 78
+      }
+    ];
 
-    Object.values(robotsRef.current).forEach(mesh => {
-      sceneRef.current!.remove(mesh);
-    });
-    robotsRef.current = {};
+    const mockSensors: Sensor[] = [
+      { id: 'temp-1', type: 'temperature', value: 22, unit: '°C', status: 'normal', location: { x: 20, y: 25 } },
+      { id: 'hum-1', type: 'humidity', value: 45, unit: '%', status: 'normal', location: { x: 30, y: 35 } },
+      { id: 'co2-1', type: 'co2', value: 450, unit: 'ppm', status: 'normal', location: { x: 40, y: 45 } },
+      { id: 'motion-1', type: 'motion', value: 1, unit: 'detected', status: 'normal', location: { x: 60, y: 55 } },
+      { id: 'light-1', type: 'light', value: 85, unit: '%', status: 'normal', location: { x: 70, y: 65 } }
+    ];
 
-    robots.forEach((robot, index) => {
-      const color =
-        robot.status === 'active' ? 0x00ff00 :
-        robot.status === 'idle' ? 0xffff00 :
-        0xff0000;
+    setZones(mockZones);
+    setRobots(mockRobots);
+    setSensors(mockSensors);
+  };
 
-      const geometry = new THREE.SphereGeometry(1.2, 32, 32);
-      const material = new THREE.MeshStandardMaterial({ color, metalness: 0.7, roughness: 0.3 });
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.position.set(robot.position.x, robot.position.y, robot.position.z);
-      mesh.castShadow = true;
-      mesh.userData = { type: 'robot', id: robot.id };
-      sceneRef.current!.add(mesh);
-      robotsRef.current[robot.id] = mesh;
+  const updateWarehouseData = () => {
+    setZones(prev => prev.map(zone => ({
+      ...zone,
+      occupancy: Math.max(0, Math.min(100, zone.occupancy + (Math.random() - 0.5) * 10)),
+      temperature: zone.temperature + (Math.random() - 0.5) * 2,
+      humidity: zone.humidity + (Math.random() - 0.5) * 5,
+      co2Level: zone.co2Level + (Math.random() - 0.5) * 20,
+      efficiency: Math.max(70, Math.min(100, zone.efficiency + (Math.random() - 0.5) * 5)),
+      lastUpdated: new Date().toISOString()
+    })));
 
-      // Label
-      const canvas = document.createElement('canvas');
-      canvas.width = 256;
-      canvas.height = 64;
-      const ctx = canvas.getContext('2d')!;
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(0, 0, 256, 64);
-      ctx.fillStyle = '#000';
-      ctx.font = '16px Arial';
-      ctx.textAlign = 'center';
-      ctx.fillText(`${robot.id} (${robot.health}%)`, 128, 40);
+    setRobots(prev => prev.map(robot => ({
+      ...robot,
+      battery: Math.max(0, Math.min(100, robot.battery + (Math.random() - 0.5) * 10)),
+      efficiency: Math.max(70, Math.min(100, robot.efficiency + (Math.random() - 0.5) * 3)),
+      location: {
+        x: Math.max(10, Math.min(90, robot.location.x + (Math.random() - 0.5) * 10)),
+        y: Math.max(10, Math.min(90, robot.location.y + (Math.random() - 0.5) * 10))
+      }
+    })));
+  };
 
-      const texture = new THREE.CanvasTexture(canvas);
-      const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture }));
-      label.position.set(robot.position.x, robot.position.y + 2.5, robot.position.z);
-      label.scale.set(8, 2, 1);
-      sceneRef.current!.add(label);
-    });
-  }, [robots]);
+  const getZoneColor = (status: string) => {
+    switch (status) {
+      case 'active': return 'bg-green-500';
+      case 'warning': return 'bg-yellow-500';
+      case 'error': return 'bg-red-500';
+      case 'maintenance': return 'bg-blue-500';
+      default: return 'bg-gray-500';
+    }
+  };
 
-  useEffect(() => {
-    fetch('/api/delivery/co2').then(res => res.json()).then(setCo2Data).catch(() => setCo2Data([]));
-  }, []);
+  const getZoneTypeIcon = (type: string) => {
+    switch (type) {
+      case 'storage': return <Package className="w-4 h-4" />;
+      case 'packing': return <Truck className="w-4 h-4" />;
+      case 'shipping': return <MapPin className="w-4 h-4" />;
+      case 'receiving': return <Clock className="w-4 h-4" />;
+      case 'robotics': return <Settings className="w-4 h-4" />;
+      default: return <Package className="w-4 h-4" />;
+    }
+  };
 
-  useEffect(() => {
-    fetch('/api/iot/latest').then(res => res.json()).then(setIotZones).catch(() => setIotZones([]));
-  }, []);
+  const getRobotStatusColor = (status: string) => {
+    switch (status) {
+      case 'active': return 'text-green-400';
+      case 'charging': return 'text-blue-400';
+      case 'maintenance': return 'text-yellow-400';
+      case 'idle': return 'text-gray-400';
+      default: return 'text-gray-400';
+    }
+  };
 
-  useEffect(() => {
-    if (!sceneRef.current) return;
-    // Remove old overlays
-    sceneRef.current.children = sceneRef.current.children.filter(obj => !obj.userData?.iotOverlay);
-    // Zone positions (mock/fixed)
-    const zonePositions: Record<'A' | 'B' | 'C', { x: number; z: number }> = { A: { x: -20, z: -20 }, B: { x: 0, z: 0 }, C: { x: 20, z: 20 } };
-    iotZones.forEach((zone: any) => {
-      const zoneId = zone.zone_id as keyof typeof zonePositions;
-      const pos = zonePositions[zoneId];
-      if (!pos) return;
-      let color = 0x00ff00;
-      if (zone.temperature > 28 || zone.vibration > 1.5) color = 0xff0000;
-      else if (zone.temperature > 24 || zone.vibration > 1.0) color = 0xffff00;
-      const box = new THREE.Mesh(
-        new THREE.BoxGeometry(8, 2, 8),
-        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.4 })
-      );
-      box.position.set(pos.x, 1, pos.z);
-      box.userData.iotOverlay = true;
-      if (sceneRef.current) sceneRef.current.add(box);
-    });
-  }, [iotZones]);
+  const getSensorStatusColor = (status: string) => {
+    switch (status) {
+      case 'normal': return 'text-green-400';
+      case 'warning': return 'text-yellow-400';
+      case 'critical': return 'text-red-400';
+      default: return 'text-gray-400';
+    }
+  };
+
+  const getSensorIcon = (type: string) => {
+    switch (type) {
+      case 'temperature': return <Thermometer className="w-3 h-3" />;
+      case 'humidity': return <Activity className="w-3 h-3" />;
+      case 'co2': return <AlertTriangle className="w-3 h-3" />;
+      case 'motion': return <Users className="w-3 h-3" />;
+      case 'light': return <Zap className="w-3 h-3" />;
+      default: return <Activity className="w-3 h-3" />;
+    }
+  };
 
   return (
-    <div className="bg-gradient-to-br from-gray-900 via-gray-950 to-gray-900 min-h-screen p-6 relative flex flex-col items-center">
-      <div className="flex items-center gap-3 mb-4">
-        <span className="bg-blue-900/80 p-2 rounded-full border-2 border-blue-400 shadow-lg">
-          <WarehouseIcon className="w-8 h-8 text-blue-300" />
-        </span>
-        <h2 className="text-3xl font-extrabold text-white tracking-tight drop-shadow">Warehouse Operations</h2>
-      </div>
-      {loading && (
-        <div className="absolute inset-0 flex items-center justify-center z-20 bg-gray-900/80">
-          <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-green-400"></div>
-          <span className="ml-4 text-white text-lg">Loading 3D warehouse...</span>
-        </div>
-      )}
-      {fbxError && !loading && (
-        <div className="absolute inset-0 flex items-center justify-center z-20">
-          <div className="bg-red-900/90 text-red-200 px-6 py-4 rounded-lg shadow-xl border border-red-400">
-            <strong>Notice:</strong> {fbxError}
+    <div className="bg-gray-900 min-h-screen p-6">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
+              <Package className="w-5 h-5 text-white" />
+            </div>
+            <h1 className="text-2xl font-bold text-white">Warehouse 2D Layout</h1>
+          </div>
+          
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setViewType(viewType === 'overview' ? 'robot' : 'overview')}
+              className={`px-4 py-2 rounded-lg font-semibold transition-colors duration-200 ${viewType === 'robot' ? 'bg-blue-700 text-white' : 'bg-gray-700 text-blue-200'}`}
+            >
+              {viewType === 'robot' ? "Switch to Overview" : "Robot's Eye View"}
+            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowSensors(!showSensors)}
+                className={`p-2 rounded-lg ${showSensors ? 'bg-blue-600' : 'bg-gray-600'}`}
+              >
+                {showSensors ? <Eye className="w-4 h-4 text-white" /> : <EyeOff className="w-4 h-4 text-white" />}
+              </button>
+              <span className="text-sm text-gray-300">Sensors</span>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowRobots(!showRobots)}
+                className={`p-2 rounded-lg ${showRobots ? 'bg-green-600' : 'bg-gray-600'}`}
+              >
+                {showRobots ? <Eye className="w-4 h-4 text-white" /> : <EyeOff className="w-4 h-4 text-white" />}
+              </button>
+              <span className="text-sm text-gray-300">Robots</span>
+            </div>
+
+            <select
+              value={viewMode}
+              onChange={(e) => setViewMode(e.target.value as any)}
+              className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm"
+            >
+              <option value="overview">Overview</option>
+              <option value="detailed">Detailed</option>
+              <option value="analytics">Analytics</option>
+            </select>
           </div>
         </div>
-      )}
-      <div
-        ref={mountRef}
-        className="w-full max-w-5xl h-96 bg-gray-800/80 rounded-2xl border-2 border-blue-700 shadow-2xl mb-8"
-        style={{ minHeight: '500px' }}
-      />
-      <div className="absolute top-8 right-8 bg-gradient-to-br from-green-900/90 to-green-800/80 rounded-xl p-6 shadow-2xl border-2 border-green-500 z-10 w-80 max-w-full">
-        <div className="flex items-center gap-2 mb-2">
-          <Award className="w-6 h-6 text-green-300" />
-          <h3 className="text-lg font-bold text-green-200">CO₂ Leaderboard</h3>
+
+        {/* Warehouse Layout or Robot View */}
+        {viewType === 'overview' ? (
+          <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-xl">
+            <div className="relative w-full h-[600px] bg-gray-900 rounded-lg overflow-hidden">
+              {/* Grid Background */}
+              <div className="absolute inset-0 opacity-20">
+                <svg width="100%" height="100%">
+                  <defs>
+                    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#374151" strokeWidth="1"/>
+                    </pattern>
+                  </defs>
+                  <rect width="100%" height="100%" fill="url(#grid)" />
+                </svg>
+              </div>
+
+              {/* Zones */}
+              <div className="absolute inset-0">
+                {zones.map((zone, index) => {
+                  const positions = [
+                    { x: 10, y: 10, w: 35, h: 25 }, // Storage A
+                    { x: 55, y: 10, w: 35, h: 25 }, // Storage B
+                    { x: 10, y: 40, w: 35, h: 25 }, // Packing Station
+                    { x: 55, y: 40, w: 35, h: 25 }, // Shipping Dock
+                    { x: 10, y: 70, w: 35, h: 25 }, // Receiving Bay
+                    { x: 55, y: 70, w: 35, h: 25 }  // Robotics Hub
+                  ];
+                  const pos = positions[index] || { x: 10, y: 10, w: 35, h: 25 };
+
+                  return (
+                    <motion.div
+                      key={zone.id}
+                      className={`absolute border-2 border-white/30 rounded-lg cursor-pointer transition-all duration-300 hover:scale-105 ${
+                        selectedZone?.id === zone.id ? 'ring-4 ring-blue-400' : ''
+                      }`}
+                      style={{
+                        left: `${pos.x}%`,
+                        top: `${pos.y}%`,
+                        width: `${pos.w}%`,
+                        height: `${pos.h}%`,
+                        backgroundColor: `rgba(34, 197, 94, ${zone.occupancy / 100 * 0.3})`
+                      }}
+                      onClick={() => setSelectedZone(zone)}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                    >
+                      <div className="p-2 h-full flex flex-col justify-between">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1">
+                            {getZoneTypeIcon(zone.type)}
+                            <span className="text-xs font-medium text-white">{zone.name}</span>
+                          </div>
+                          <div className={`w-2 h-2 rounded-full ${getZoneColor(zone.status)}`} />
+                        </div>
+                        
+                        <div className="text-xs text-gray-300 space-y-1">
+                          <div className="flex justify-between">
+                            <span>Occupancy:</span>
+                            <span className="text-white">{Math.round(zone.occupancy)}%</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Efficiency:</span>
+                            <span className="text-white">{Math.round(zone.efficiency)}%</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Robots:</span>
+                            <span className="text-white">{zone.robots}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+
+              {/* Robots */}
+              {showRobots && robots.map((robot) => (
+                <motion.div
+                  key={robot.id}
+                  className="absolute w-6 h-6 bg-blue-500 rounded-full border-2 border-white shadow-lg cursor-pointer"
+                  style={{
+                    left: `${robot.location.x}%`,
+                    top: `${robot.location.y}%`,
+                    transform: 'translate(-50%, -50%)'
+                  }}
+                  animate={{
+                    x: [0, 5, 0],
+                    y: [0, -5, 0]
+                  }}
+                  transition={{
+                    duration: 2,
+                    repeat: Infinity,
+                    ease: "easeInOut"
+                  }}
+                  title={`${robot.name} - ${robot.currentTask}`}
+                >
+                  <div className={`w-full h-full rounded-full flex items-center justify-center ${getRobotStatusColor(robot.status)}`}>
+                    <Battery className="w-3 h-3" />
+                  </div>
+                </motion.div>
+              ))}
+
+              {/* Sensors */}
+              {showSensors && sensors.map((sensor) => (
+                <motion.div
+                  key={sensor.id}
+                  className="absolute w-4 h-4 bg-purple-500 rounded-full border border-white shadow-md cursor-pointer"
+                  style={{
+                    left: `${sensor.location.x}%`,
+                    top: `${sensor.location.y}%`,
+                    transform: 'translate(-50%, -50%)'
+                  }}
+                  animate={{
+                    scale: [1, 1.2, 1]
+                  }}
+                  transition={{
+                    duration: 1.5,
+                    repeat: Infinity,
+                    ease: "easeInOut"
+                  }}
+                  title={`${sensor.type}: ${sensor.value}${sensor.unit}`}
+                >
+                  <div className={`w-full h-full rounded-full flex items-center justify-center ${getSensorStatusColor(sensor.status)}`}>
+                    {getSensorIcon(sensor.type)}
+                  </div>
+                </motion.div>
+              ))}
+
+              {/* Conveyor Lines */}
+              <svg className="absolute inset-0 pointer-events-none">
+                <defs>
+                  <pattern id="conveyor" patternUnits="userSpaceOnUse" width="20" height="4">
+                    <rect width="20" height="4" fill="none" stroke="#6b7280" strokeWidth="1" strokeDasharray="2,2"/>
+                  </pattern>
+                </defs>
+                <path d="M 40 210 L 360 210" stroke="url(#conveyor)" strokeWidth="3" fill="none"/>
+                <path d="M 200 60 L 200 340" stroke="url(#conveyor)" strokeWidth="3" fill="none"/>
+              </svg>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-xl flex justify-center">
+            <RobotView3D />
+          </div>
+        )}
+
+        {/* Zone Details Panel */}
+        {selectedZone && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-6 bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-xl"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-white">{selectedZone.name}</h3>
+              <div className={`px-3 py-1 rounded-full text-xs font-medium ${
+                selectedZone.status === 'active' ? 'bg-green-500/20 text-green-400' :
+                selectedZone.status === 'warning' ? 'bg-yellow-500/20 text-yellow-400' :
+                selectedZone.status === 'error' ? 'bg-red-500/20 text-red-400' :
+                'bg-blue-500/20 text-blue-400'
+              }`}>
+                {selectedZone.status}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-gray-700/50 p-4 rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <Package className="w-4 h-4 text-blue-400" />
+                  <span className="text-sm text-gray-300">Occupancy</span>
+                </div>
+                <div className="text-2xl font-bold text-white">{Math.round(selectedZone.occupancy)}%</div>
+                <div className="text-xs text-gray-400">Capacity: {selectedZone.capacity}</div>
+              </div>
+
+              <div className="bg-gray-700/50 p-4 rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <Thermometer className="w-4 h-4 text-red-400" />
+                  <span className="text-sm text-gray-300">Temperature</span>
+                </div>
+                <div className="text-2xl font-bold text-white">{Math.round(selectedZone.temperature)}°C</div>
+                <div className="text-xs text-gray-400">Humidity: {Math.round(selectedZone.humidity)}%</div>
+              </div>
+
+              <div className="bg-gray-700/50 p-4 rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <Settings className="w-4 h-4 text-green-400" />
+                  <span className="text-sm text-gray-300">Efficiency</span>
+                </div>
+                <div className="text-2xl font-bold text-white">{Math.round(selectedZone.efficiency)}%</div>
+                <div className="text-xs text-gray-400">Robots: {selectedZone.robots}</div>
+              </div>
+
+              <div className="bg-gray-700/50 p-4 rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <AlertTriangle className="w-4 h-4 text-yellow-400" />
+                  <span className="text-sm text-gray-300">CO2 Level</span>
+                </div>
+                <div className="text-2xl font-bold text-white">{Math.round(selectedZone.co2Level)} ppm</div>
+                <div className="text-xs text-gray-400">Last updated: {new Date(selectedZone.lastUpdated).toLocaleTimeString()}</div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Analytics Summary */}
+        <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
+                <TrendingUp className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-white">Overall Efficiency</h3>
+                <p className="text-sm text-gray-400">Warehouse Performance</p>
+              </div>
+            </div>
+            <div className="text-3xl font-bold text-blue-400">
+              {Math.round(zones.reduce((acc, zone) => acc + zone.efficiency, 0) / zones.length)}%
+            </div>
+          </div>
+
+          <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center">
+                <Settings className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-white">Active Robots</h3>
+                <p className="text-sm text-gray-400">Currently Operating</p>
+              </div>
+            </div>
+            <div className="text-3xl font-bold text-green-400">
+              {robots.filter(r => r.status === 'active').length}/{robots.length}
+            </div>
+          </div>
+
+          <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-purple-500 rounded-lg flex items-center justify-center">
+                <Activity className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-white">Sensor Status</h3>
+                <p className="text-sm text-gray-400">Environmental Monitoring</p>
+              </div>
+            </div>
+            <div className="text-3xl font-bold text-purple-400">
+              {sensors.filter(s => s.status === 'normal').length}/{sensors.length}
+            </div>
+          </div>
         </div>
-        <div className="text-sm text-white mb-1">Top Green Routes:</div>
-        <ul className="mb-2 space-y-1">
-          {co2Data.sort((a, b) => a.co2 - b.co2).slice(0, 3).map((d, i) => (
-            <li key={d.deliveryId} className="flex items-center gap-2 text-green-100 font-semibold">
-              <span className="inline-block w-6 text-center text-green-400 font-bold">{i + 1}.</span>
-              <span className="truncate flex-1">{d.route}</span>
-              <span className="bg-green-700/80 px-2 py-0.5 rounded text-xs font-mono">{d.co2} kg</span>
-            </li>
-          ))}
-        </ul>
-        <div className="text-xs text-green-200 font-semibold">CO₂ Saved: <span className="bg-green-700 px-2 py-1 rounded">{Math.max(0, 50 - (co2Data[0]?.co2 || 0)).toFixed(1)} kg</span></div>
       </div>
     </div>
   );
 };
 
-export default Warehouse3D;
+export default Warehouse2D;

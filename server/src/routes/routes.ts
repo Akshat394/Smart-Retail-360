@@ -28,6 +28,7 @@ import { iotReadings } from '../../../shared/schema';
 import openapiRouter from './openapi';
 import { generateApiKey, validateApiKey, enforceApiKeyRateLimit, getApiKeyInfo, incrementApiKeyUsage } from '../utils/apiKeyManager';
 import { updateInventory, deleteInventory } from '../utils/storage';
+import { injectMockProductTrace } from '../../../blockchain/traceability';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -715,6 +716,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }));
         }
       });
+      
+      // Trigger sustainability update if this is a green delivery
+      if (newOrder.greenDelivery) {
+        // Get updated sustainability metrics
+        const orders = await storage.getAllClickCollectOrders();
+        const totalOrders = orders.length;
+        const greenOrders = orders.filter(o => o.greenDelivery).length;
+        const greenDeliveryRate = totalOrders > 0 ? ((greenOrders / totalOrders) * 100).toFixed(1) : '0.0';
+        
+        clients.forEach((client) => {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify({
+              type: 'sustainability_update',
+              data: {
+                totalOrders,
+                greenOrders,
+                greenDeliveryRate
+              },
+              timestamp: new Date().toISOString()
+            }));
+          }
+        });
+      }
+      
       res.status(201).json(newOrder);
     } catch (error) {
       res.status(400).json({ error: 'Failed to create click-and-collect order' });
@@ -1379,10 +1404,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // --- Sustainability Metrics API ---
-  app.get('/api/sustainability-metrics', authenticate, async (req, res) => {
+  app.get('/api/sustainability-metrics', async (req, res) => {
     try {
-      // Aggregate sustainability metrics from orders
-      const orders = await storage.getAllClickCollectOrders();
+      // Use mock data for demo if demo=1 is present
+      const useMock = req.query.demo === '1';
+      const orders = useMock ? generateMockOrders('7d') : await storage.getAllClickCollectOrders();
       const totalOrders = orders.length;
       const greenOrders = orders.filter(o => o.greenDelivery).length;
       const co2Saved = orders.reduce((sum, o) => sum + (o.greenDelivery ? 1.2 : 0), 0); // Example: 1.2kg saved per green delivery
@@ -1416,7 +1442,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         byMonth[month].energy += o.energyUsage || 0;
         byMonth[month].count += 1;
       }
-      res.json({
+      
+      const sustainabilityData = {
         totalOrders,
         greenOrders,
         co2Saved: co2Saved.toFixed(2),
@@ -1427,14 +1454,75 @@ export async function registerRoutes(app: Express): Promise<Server> {
         byMode,
         byMonth,
         greenDeliveryRate: totalOrders > 0 ? ((greenOrders / totalOrders) * 100).toFixed(1) : '0.0'
+      };
+
+      // Broadcast sustainability update to WebSocket clients
+      clients.forEach((client) => {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(JSON.stringify({
+            type: 'sustainability_update',
+            data: sustainabilityData,
+            timestamp: new Date().toISOString()
+          }));
+        }
       });
+
+      res.json(sustainabilityData);
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch sustainability metrics' });
     }
   });
 
+  // --- Enhanced Sustainability Metrics with Blockchain Integration ---
+  app.get('/api/sustainability-metrics/enhanced', async (req, res) => {
+    try {
+      // Get regular sustainability metrics
+      const orders = await storage.getAllClickCollectOrders();
+      const totalOrders = orders.length;
+      const greenOrders = orders.filter(o => o.greenDelivery).length;
+      const co2Saved = orders.reduce((sum, o) => sum + (o.greenDelivery ? 1.2 : 0), 0);
+      const totalCO2 = orders.reduce((sum, o) => sum + (o.co2Emission || 0), 0);
+      const totalEnergy = orders.reduce((sum, o) => sum + (o.energyUsage || 0), 0);
+      const avgEfficiency = totalOrders > 0 ? (orders.reduce((sum, o) => sum + (o.deliveryEfficiencyScore || 0), 0) / totalOrders).toFixed(2) : '0.0';
+
+      // Get blockchain sustainability metrics
+      const blockchainMetrics = await blockchainService.getSustainabilityMetrics();
+      
+      const enhancedData = {
+        totalOrders,
+        greenOrders,
+        co2Saved: co2Saved.toFixed(2),
+        totalCO2: totalCO2.toFixed(2),
+        totalEnergy: totalEnergy.toFixed(2),
+        avgEfficiency,
+        greenDeliveryRate: totalOrders > 0 ? ((greenOrders / totalOrders) * 100).toFixed(1) : '0.0',
+        blockchainMetrics: {
+          totalCarbonOffset: blockchainMetrics.totalCarbonOffset,
+          totalGreenTokens: blockchainMetrics.totalGreenTokens,
+          carbonProjects: blockchainMetrics.totalProjects,
+          sustainabilityScore: blockchainMetrics.averageSustainabilityScore
+        }
+      };
+
+      // Broadcast enhanced sustainability update
+      clients.forEach((client) => {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(JSON.stringify({
+            type: 'sustainability_update',
+            data: enhancedData,
+            timestamp: new Date().toISOString()
+          }));
+        }
+      });
+
+      res.json(enhancedData);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch enhanced sustainability metrics' });
+    }
+  });
+
   // --- Sustainability Metrics Export API ---
-  app.get('/api/sustainability-metrics/export', authenticate, async (req, res) => {
+  app.get('/api/sustainability-metrics/export', async (req, res) => {
     try {
       const orders = await storage.getAllClickCollectOrders();
       const rows = orders.map(o => ({
@@ -1462,7 +1550,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // --- Advanced Sustainability Analytics Endpoints ---
-  app.get('/api/green-leaderboard', authenticate, async (req, res) => {
+  app.get('/api/green-leaderboard', async (req, res) => {
     try {
       const customers = await storage.getAllCustomers();
       // Sort by greenScore descending, return top 10
@@ -1473,7 +1561,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/green-score/:customerName', authenticate, async (req, res) => {
+  app.get('/api/green-score/:customerName', async (req, res) => {
     try {
       const { customerName } = req.params;
       const customer = await storage.getCustomerByName(customerName);
@@ -1642,7 +1730,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // --- Advanced Sustainability Analytics: Company-Wide Leaderboard ---
-  app.get('/api/green-leaderboard/products', authenticate, async (req, res) => {
+  app.get('/api/green-leaderboard/products', async (req, res) => {
     try {
       const orders = await storage.getAllClickCollectOrders();
       // Aggregate green deliveries by product
@@ -1662,7 +1750,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/green-leaderboard/locations', authenticate, async (req, res) => {
+  app.get('/api/green-leaderboard/locations', async (req, res) => {
     try {
       const orders = await storage.getAllClickCollectOrders();
       // Aggregate green deliveries by location
@@ -1682,7 +1770,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/green-leaderboard/company', authenticate, async (req, res) => {
+  app.get('/api/green-leaderboard/company', async (req, res) => {
     try {
       const orders = await storage.getAllClickCollectOrders();
       const customers = await storage.getAllCustomers();
@@ -1874,7 +1962,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Enhanced Real-Time Analytics Endpoints
-  app.get('/api/real-time/kpi', authenticate, async (req, res) => {
+  app.get('/api/real-time/kpi', async (req, res) => {
     try {
       const kpiData = await realTimeAnalytics.generateKPIMetrics();
       res.json(kpiData);
@@ -1883,7 +1971,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/real-time/robot-health', authenticate, async (req, res) => {
+  app.get('/api/real-time/robot-health', async (req, res) => {
     try {
       // const robotHealth = realTimeAnalytics.getRobotHealthData(); // Removed: method does not exist
       res.json({ robotHealth: 'Robot health data not available' });
@@ -1893,7 +1981,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Advanced ML Model Endpoints
-  app.post('/api/ml/demand-forecast', authenticate, async (req, res) => {
+  app.post('/api/ml/demand-forecast', async (req, res) => {
     try {
       const { historicalData, productId } = req.body;
       const forecast = await getMLExplanation(historicalData, { model: 'transformer', productId });
@@ -1903,7 +1991,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/ml/warehouse-vision', authenticate, async (req, res) => {
+  app.post('/api/ml/warehouse-vision', async (req, res) => {
     try {
       const { imageData } = req.body;
       const analysis = await getMLExplanation(imageData, { model: 'yolo' });
@@ -1913,7 +2001,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/ml/route-optimization-rl', authenticate, async (req, res) => {
+  app.post('/api/ml/route-optimization-rl', async (req, res) => {
     try {
       const { graph, start, end } = req.body;
       const optimization = await getMLRouteRecommendation(graph, start, end);
@@ -1923,7 +2011,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/ml/sentiment-analysis', authenticate, async (req, res) => {
+  app.post('/api/ml/sentiment-analysis', async (req, res) => {
     try {
       const { feedbackText } = req.body;
       const sentiment = await getMLExplanation(feedbackText, { model: 'nlp' });
@@ -1944,9 +2032,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/blockchain/trace/:productId', authenticate, async (req, res) => {
+  app.get('/api/blockchain/trace/:productId', async (req, res) => {
     try {
       const { productId } = req.params;
+      // Inject mock data for demo product IDs
+      if ([
+        'PROD-12345',
+        'PROD-67890',
+        'PROD-11111',
+        'PROD-DEMO',
+        'DEMO-TRACE'
+      ].includes(productId)) {
+        injectMockProductTrace(productId);
+      }
       const traces = await blockchainService.getProductTraceability(productId);
       res.json(traces);
     } catch (error) {
@@ -1958,6 +2056,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { owner, amount, carbonOffset } = req.body;
       const token = await blockchainService.mintGreenTokens(owner, amount, carbonOffset);
+      
+      // Broadcast blockchain sustainability update
+      const blockchainMetrics = await blockchainService.getSustainabilityMetrics();
+      clients.forEach((client) => {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(JSON.stringify({
+            type: 'blockchain_sustainability_update',
+            data: {
+              totalCarbonOffset: blockchainMetrics.totalCarbonOffset,
+              totalGreenTokens: blockchainMetrics.totalGreenTokens,
+              carbonProjects: blockchainMetrics.totalProjects,
+              sustainabilityScore: blockchainMetrics.averageSustainabilityScore
+            },
+            timestamp: new Date().toISOString()
+          }));
+        }
+      });
+      
       res.json(token);
     } catch (error) {
       res.status(500).json({ error: 'Failed to mint green tokens' });
@@ -1968,13 +2084,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { owner, amount } = req.body;
       const success = await blockchainService.burnGreenTokens(owner, amount);
+      
+      if (success) {
+        // Broadcast blockchain sustainability update
+        const blockchainMetrics = await blockchainService.getSustainabilityMetrics();
+        clients.forEach((client) => {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify({
+              type: 'blockchain_sustainability_update',
+              data: {
+                totalCarbonOffset: blockchainMetrics.totalCarbonOffset,
+                totalGreenTokens: blockchainMetrics.totalGreenTokens,
+                carbonProjects: blockchainMetrics.totalProjects,
+                sustainabilityScore: blockchainMetrics.averageSustainabilityScore
+              },
+              timestamp: new Date().toISOString()
+            }));
+          }
+        });
+      }
+      
       res.json({ success });
     } catch (error) {
       res.status(500).json({ error: 'Failed to burn green tokens' });
     }
   });
 
-  app.get('/api/blockchain/green-tokens/balance/:owner', authenticate, async (req, res) => {
+  app.get('/api/blockchain/green-tokens/balance/:owner', async (req, res) => {
     try {
       const { owner } = req.params;
       const balance = await blockchainService.getGreenTokenBalance(owner);
@@ -2022,7 +2158,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/blockchain/authenticity/:productId', authenticate, async (req, res) => {
+  app.get('/api/blockchain/authenticity/:productId', async (req, res) => {
     try {
       const { productId } = req.params;
       const isAuthentic = await blockchainService.verifyProductAuthenticity(productId);
@@ -2032,7 +2168,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/blockchain/stats', authenticate, async (req, res) => {
+  app.get('/api/blockchain/stats', async (req, res) => {
     try {
       const stats = await blockchainService.getBlockchainStats();
       res.json(stats);
@@ -2042,7 +2178,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Sustainability Analytics Endpoints
-  app.get('/api/blockchain/sustainability/metrics', authenticate, async (req, res) => {
+  app.get('/api/blockchain/sustainability/metrics', async (req, res) => {
     try {
       const metrics = await blockchainService.getSustainabilityMetrics();
       res.json(metrics);
@@ -2051,7 +2187,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/blockchain/sustainability/trends', authenticate, async (req, res) => {
+  app.get('/api/blockchain/sustainability/trends', async (req, res) => {
     try {
       const metrics = await blockchainService.getSustainabilityMetrics();
       res.json({ trends: metrics.sustainabilityTrends });
@@ -2060,7 +2196,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/blockchain/sustainability/carbon-footprint/:productId', authenticate, async (req, res) => {
+  app.get('/api/blockchain/sustainability/carbon-footprint/:productId', async (req, res) => {
     try {
       const { productId } = req.params;
       const traces = await blockchainService.getProductTraceability(productId);
@@ -2084,7 +2220,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/blockchain/carbon-projects', authenticate, async (req, res) => {
+  app.get('/api/blockchain/carbon-projects', async (req, res) => {
     try {
       const projects = await blockchainService.getCarbonProjects();
       res.json({ projects });
@@ -2104,7 +2240,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Enhanced Green Token Endpoints
-  app.get('/api/blockchain/green-tokens/transactions/:owner', authenticate, async (req, res) => {
+  app.get('/api/blockchain/green-tokens/transactions/:owner', async (req, res) => {
     try {
       const { owner } = req.params;
       const tokens = blockchainService['greenTokens'].get(owner) || [];
@@ -2114,7 +2250,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/blockchain/green-tokens/leaderboard', authenticate, async (req, res) => {
+  app.get('/api/blockchain/green-tokens/leaderboard', async (req, res) => {
     try {
       const greenTokens = blockchainService['greenTokens'];
       const leaderboard = Array.from(greenTokens.entries())
@@ -2132,7 +2268,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Edge Computing Endpoints
-  app.get('/api/edge/devices', authenticate, async (req, res) => {
+  app.get('/api/edge/devices', async (req, res) => {
     try {
       const { data } = await axios.get(`${EDGE_API_BASE}/devices`);
       res.json(data);
@@ -2141,7 +2277,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/edge/devices/:deviceId', authenticate, async (req, res) => {
+  app.get('/api/edge/devices/:deviceId', async (req, res) => {
     try {
       const { deviceId } = req.params;
       const { data } = await axios.get(`${EDGE_API_BASE}/devices/${deviceId}`);
@@ -2151,7 +2287,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/edge/emergency-coordination', authenticate, async (req, res) => {
+  app.post('/api/edge/emergency-coordination', async (req, res) => {
     try {
       const { clusterId, emergencyType, details } = req.body;
       const { data } = await axios.post(`${EDGE_API_BASE}/emergency-coordination`, {
@@ -2166,7 +2302,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Enhanced Edge Computing Endpoints
-  app.get('/api/edge/analytics', authenticate, async (req, res) => {
+  app.get('/api/edge/analytics', async (req, res) => {
     try {
       const { data } = await axios.get(`${EDGE_API_BASE}/analytics`);
       res.json(data);
@@ -2175,7 +2311,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/edge/clusters', authenticate, async (req, res) => {
+  app.get('/api/edge/clusters', async (req, res) => {
     try {
       // Get a list of clusters from FastAPI service
       const clusters = [];
@@ -2193,7 +2329,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/edge/clusters/:clusterId', authenticate, async (req, res) => {
+  app.get('/api/edge/clusters/:clusterId', async (req, res) => {
     try {
       const { clusterId } = req.params;
       const { data: clusterStatus } = await axios.get(`${EDGE_API_BASE}/clusters/${clusterId}`);
@@ -2203,7 +2339,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/edge/emergencies', authenticate, async (req, res) => {
+  app.get('/api/edge/emergencies', async (req, res) => {
     try {
       const { data } = await axios.get(`${EDGE_API_BASE}/emergencies`);
       res.json({ emergencies: data });
@@ -2212,7 +2348,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/edge/devices', authenticate, async (req, res) => {
+  app.post('/api/edge/devices', async (req, res) => {
     try {
       const { deviceId, deviceType, location } = req.body;
       const { data } = await axios.post(`${EDGE_API_BASE}/devices`, { deviceId, deviceType, location });
@@ -2222,7 +2358,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/edge/devices/:deviceId/ml-models', authenticate, async (req, res) => {
+  app.get('/api/edge/devices/:deviceId/ml-models', async (req, res) => {
     try {
       // For demo, just return an empty object or mock data
       res.json({ ml_models: {} });
@@ -2232,7 +2368,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // AR/VR Endpoints
-  app.get('/api/warehouse/3d-layout', authenticate, async (req, res) => {
+  app.get('/api/warehouse/3d-layout', async (req, res) => {
     try {
       // Mock warehouse layout data
       const layout = [
@@ -2247,7 +2383,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/warehouse/ar-paths', authenticate, async (req, res) => {
+  app.post('/api/warehouse/ar-paths', async (req, res) => {
     try {
       const { robotId, path, color, status } = req.body;
       // In real implementation, this would store AR paths
@@ -2318,8 +2454,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // GDPR Compliance Endpoints
-  app.get('/api/gdpr/export/:userId', authenticate, async (req, res) => {
+  // GDPR Compliance Endpoints (Demo - No Auth Required)
+  app.get('/api/gdpr/export/:userId', async (req, res) => {
     try {
       const { userId } = req.params;
       const userData = await securityService.exportUserData(parseInt(userId));
@@ -2329,7 +2465,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete('/api/gdpr/delete/:userId', authenticate, async (req, res) => {
+  app.delete('/api/gdpr/delete/:userId', async (req, res) => {
     try {
       const { userId } = req.params;
       const success = await securityService.deleteUserData(parseInt(userId));
@@ -2339,7 +2475,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put('/api/gdpr/rectify/:userId', authenticate, async (req, res) => {
+  app.put('/api/gdpr/rectify/:userId', async (req, res) => {
     try {
       const { userId } = req.params;
       const { corrections } = req.body;
@@ -2432,7 +2568,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // External System Integration Endpoints
-  app.get('/api/erp/products', authenticate, async (req, res) => {
+  app.get('/api/erp/products', async (req, res) => {
     try {
       const products = await externalIntegrations.getERPProducts();
       res.json(products);
@@ -2441,7 +2577,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/erp/purchase-orders', authenticate, async (req, res) => {
+  app.post('/api/erp/purchase-orders', async (req, res) => {
     try {
       const purchaseOrder = await externalIntegrations.createERPPurchaseOrder(req.body);
       res.json(purchaseOrder);
@@ -2450,7 +2586,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/erp/sync-inventory', authenticate, async (req, res) => {
+  app.post('/api/erp/sync-inventory', async (req, res) => {
     try {
       await externalIntegrations.syncInventoryWithERP();
       res.json({ success: true });
@@ -2459,7 +2595,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/weather/:location', authenticate, async (req, res) => {
+  app.get('/api/weather/:location', async (req, res) => {
     try {
       const { location } = req.params;
       const weatherData = await externalIntegrations.getWeatherData(location);
@@ -2469,7 +2605,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/weather/routes', authenticate, async (req, res) => {
+  app.post('/api/weather/routes', async (req, res) => {
     try {
       const { origin, destination } = req.body;
       const weatherAwareRoute = await externalIntegrations.getWeatherAwareRoutes(origin, destination);
@@ -2479,7 +2615,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/logistics/shipments', authenticate, async (req, res) => {
+  app.post('/api/logistics/shipments', async (req, res) => {
     try {
       const trackingNumber = await externalIntegrations.createLogisticsShipment(req.body);
       res.json({ trackingNumber });
@@ -2488,7 +2624,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/logistics/tracking/:trackingNumber', authenticate, async (req, res) => {
+  app.get('/api/logistics/tracking/:trackingNumber', async (req, res) => {
     try {
       const { trackingNumber } = req.params;
       const trackingData = await externalIntegrations.getLogisticsTracking(trackingNumber);
@@ -2498,7 +2634,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/logistics/update-order/:orderId', authenticate, async (req, res) => {
+  app.post('/api/logistics/update-order/:orderId', async (req, res) => {
     try {
       const { orderId } = req.params;
       const { trackingData } = req.body;
@@ -2509,7 +2645,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/wms/sync', authenticate, async (req, res) => {
+  app.post('/api/wms/sync', async (req, res) => {
     try {
       await externalIntegrations.syncWMSChanges();
       res.json({ success: true });
@@ -2597,7 +2733,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/erp/sync-orders', authenticate, async (req, res) => {
+  app.post('/api/erp/sync-orders', async (req, res) => {
     try {
       const orders = await erpSimulator.syncOrdersWithERP();
       res.json({ success: true, orders });
@@ -2606,7 +2742,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/erp/sync-logs', authenticate, async (req, res) => {
+  app.get('/api/erp/sync-logs', async (req, res) => {
     try {
       const logs = erpSimulator.getERPSyncLogs();
       res.json({ logs });
@@ -3017,19 +3153,23 @@ function generateSustainabilityRecommendations(orders: any[]): string[] {
     recommendations.push('Optimize delivery routes to reduce carbon footprint per order');
   }
   
-  const channelGreenRates: { [key: string]: number } = {};
+  // Track green delivery rates by channel using separate objects
+  const channelTotals: { [key: string]: number } = {};
+  const channelGreens: { [key: string]: number } = {};
+  
   orders.forEach(order => {
-    if (!channelGreenRates[order.channel]) {
-      channelGreenRates[order.channel] = { green: 0, total: 0 };
-    }
-    channelGreenRates[order.channel].total++;
+    const channel = order.channel;
+    channelTotals[channel] = (channelTotals[channel] || 0) + 1;
     if (order.greenDelivery) {
-      channelGreenRates[order.channel].green++;
+      channelGreens[channel] = (channelGreens[channel] || 0) + 1;
     }
   });
   
-  Object.entries(channelGreenRates).forEach(([channel, data]) => {
-    const rate = data.green / data.total;
+  Object.keys(channelTotals).forEach(channel => {
+    const total = channelTotals[channel];
+    const green = channelGreens[channel] || 0;
+    const rate = green / total;
+    
     if (rate < 0.2) {
       recommendations.push(`Promote green delivery options more prominently in ${channel} channel`);
     }

@@ -213,7 +213,7 @@ class ApiService {
 
   // Sustainability metrics
   async getSustainabilityMetrics() {
-    return this.request('/sustainability-metrics');
+    return this.request('/sustainability-metrics?demo=1');
   }
 
   async getGreenLeaderboard() {
@@ -291,7 +291,7 @@ class ApiService {
   }
 
   async getAdvancedSustainabilityMetrics() {
-    return this.request('/sustainability-metrics');
+    return this.request('/sustainability-metrics?demo=1');
   }
 
   async exportSustainabilityMetricsCSV() {

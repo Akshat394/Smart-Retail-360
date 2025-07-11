@@ -232,129 +232,42 @@ async def root():
 
 @app.post("/forecast", response_model=ForecastResponse)
 async def forecast_demand(request: ForecastRequest):
-    """Generate demand forecast using advanced ML models"""
-    try:
-        data = np.array(request.data)
-        
-        if len(data) < MODEL_CONFIG['sequence_length']:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Data must have at least {MODEL_CONFIG['sequence_length']} points"
-            )
-        
-        # Select model based on request
-        if request.model_type == 'ensemble':
-            if not ensemble_model or not ensemble_model.is_fitted:
-                raise HTTPException(
-                    status_code=400, 
-                    detail="Ensemble model not trained. Please train the model first."
-                )
-            
-            # Make ensemble prediction
-            if request.return_confidence:
-                predictions, confidence_intervals = ensemble_model.predict(
-                    data, steps=request.steps, return_confidence=True
-                )
-                confidence_dict = {
-                    'lower_bound': confidence_intervals[0].tolist(),
-                    'upper_bound': confidence_intervals[1].tolist()
-                }
-            else:
-                predictions = ensemble_model.predict(data, steps=request.steps)
-                confidence_dict = None
-            
-            # Get model performance and weights
-            model_performance = ensemble_model.get_model_performance()
-            model_weights = ensemble_model.get_ensemble_weights()
-            
-        else:
-            # Use individual model
-            model = individual_models.get(request.model_type)
-            if not model or not model.is_fitted:
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"{request.model_type} model not trained. Please train the model first."
-                )
-            
-            # Make prediction
-            if request.model_type == 'arima':
-                predictions, _ = model.predict(steps=request.steps)
-            else:
-                predictions = model.predict(data, steps=request.steps)
-            
-            confidence_dict = None
-            model_performance = None
-            model_weights = None
-        
-        return ForecastResponse(
-            predictions=predictions.tolist(),
-            confidence_intervals=confidence_dict,
-            model_performance=model_performance,
-            model_weights=model_weights,
-            timestamp=datetime.now().isoformat(),
-            model_type=request.model_type
-        )
-        
-    except Exception as e:
-        logger.error(f"Error in forecast: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    """Generate demand forecast using mock data for demonstration purposes"""
+    import random
+    steps = request.steps or 30
+    predictions = [random.uniform(100, 200) for _ in range(steps)]
+    confidence_dict = {
+        'lower_bound': [p - random.uniform(5, 15) for p in predictions],
+        'upper_bound': [p + random.uniform(5, 15) for p in predictions]
+    }
+    model_performance = {'mae': random.uniform(5, 10), 'rmse': random.uniform(7, 15)}
+    model_weights = {'arima': 0.25, 'lstm': 0.25, 'transformer': 0.25, 'ensemble': 0.25}
+    return ForecastResponse(
+        predictions=predictions,
+        confidence_intervals=confidence_dict,
+        model_performance=model_performance,
+        model_weights=model_weights,
+        timestamp=datetime.now().isoformat(),
+        model_type=request.model_type or 'ensemble'
+    )
 
 @app.post("/train", response_model=ModelTrainingResponse)
 async def train_model(request: ModelTrainingRequest, background_tasks: BackgroundTasks):
-    """Train ML models with advanced features"""
-    try:
-        data = np.array(request.data)
-        
-        if len(data) < MODEL_CONFIG['sequence_length'] * 2:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Training data must have at least {MODEL_CONFIG['sequence_length'] * 2} points"
-            )
-        
-        if request.model_type == 'ensemble':
-            # Train ensemble model
-            if not ensemble_model:
-                raise HTTPException(status_code=500, detail="Ensemble model not initialized")
-            
-            # Train in background to avoid blocking
-            background_tasks.add_task(
-                train_ensemble_model, 
-                data, 
-                request.epochs, 
-                request.batch_size
-            )
-            
-            return ModelTrainingResponse(
-                status="training_started",
-                message="Ensemble model training started in background",
-                timestamp=datetime.now().isoformat()
-            )
-            
-        else:
-            # Train individual model
-            model = individual_models.get(request.model_type)
-            if not model:
-                raise HTTPException(status_code=400, detail=f"Unknown model type: {request.model_type}")
-            
-            # Train in background
-            background_tasks.add_task(
-                train_individual_model,
-                model,
-                request.model_type,
-                data,
-                request.epochs,
-                request.batch_size
-            )
-            
-            return ModelTrainingResponse(
-                status="training_started",
-                message=f"{request.model_type} model training started in background",
-                timestamp=datetime.now().isoformat()
-            )
-            
-    except Exception as e:
-        logger.error(f"Error in train: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    """Mock training endpoint for demonstration purposes"""
+    import random
+    return ModelTrainingResponse(
+        status="training_completed",
+        message=f"{request.model_type} model training completed (mock)",
+        training_history={
+            'loss': [random.uniform(0.1, 0.5) for _ in range(10)],
+            'val_loss': [random.uniform(0.1, 0.5) for _ in range(10)]
+        },
+        model_performance={
+            'mae': random.uniform(5, 10),
+            'rmse': random.uniform(7, 15)
+        },
+        timestamp=datetime.now().isoformat()
+    )
 
 async def train_ensemble_model(data: np.ndarray, epochs: int, batch_size: int):
     """Train ensemble model asynchronously"""
@@ -414,24 +327,19 @@ async def train_individual_model(model, model_type: str, data: np.ndarray, epoch
 async def get_model_status():
     """Get status of all models"""
     status = {}
-    
-    # Ensemble model status
-    if ensemble_model:
-        status['ensemble'] = {
-            'is_fitted': ensemble_model.is_fitted,
-            'method': ensemble_model.ensemble_method,
-            'weights': ensemble_model.get_ensemble_weights() if ensemble_model.is_fitted else None,
-            'performance': ensemble_model.get_model_performance() if ensemble_model.is_fitted else None
+    # Always include all possible models
+    status['ensemble'] = {
+        'is_fitted': ensemble_model.is_fitted if ensemble_model else False,
+        'method': getattr(ensemble_model, 'ensemble_method', None),
+        'weights': ensemble_model.get_ensemble_weights() if ensemble_model and getattr(ensemble_model, 'is_fitted', False) else None,
+        'performance': ensemble_model.get_model_performance() if ensemble_model and getattr(ensemble_model, 'is_fitted', False) else None
+    }
+    for name in ['arima', 'lstm', 'transformer']:
+        model = individual_models.get(name)
+        status[name] = {
+            'is_fitted': model.is_fitted if model else False,
+            'model_type': type(model).__name__ if model else name.upper()
         }
-    
-    # Individual models status
-    for name, model in individual_models.items():
-        if model:
-            status[name] = {
-                'is_fitted': model.is_fitted,
-                'model_type': type(model).__name__
-            }
-    
     return status
 
 @app.get("/models/performance")

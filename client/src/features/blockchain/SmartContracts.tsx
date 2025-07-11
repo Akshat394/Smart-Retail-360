@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Play, Pause, Settings, Code, CheckCircle, AlertTriangle, Clock, Info } from 'lucide-react';
+import { FileText, Play, Pause, Settings, Code, CheckCircle, AlertTriangle, Clock, Info, Zap } from 'lucide-react';
 import { useNotification } from '../../hooks/useNotification';
 
 interface SmartContract {
@@ -29,7 +29,6 @@ const SmartContracts: React.FC = () => {
   const [selectedContract, setSelectedContract] = useState<SmartContract | null>(null);
   const [loading, setLoading] = useState(true);
   const { showNotification } = useNotification();
-  const [demoMode, setDemoMode] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(true);
 
   useEffect(() => {
@@ -43,13 +42,12 @@ const SmartContracts: React.FC = () => {
       if (response.ok) {
         const data = await response.json();
         setContracts(data.contracts);
-        setDemoMode(false);
       } else {
         throw new Error('No real data');
       }
-    } catch {
-      setDemoMode(true);
-      // Mock data for demo
+    } catch (error) {
+      console.error('Failed to fetch contracts:', error);
+      // Mock data for demonstration
       const mockContracts: SmartContract[] = [
         {
           id: '1',
@@ -111,7 +109,8 @@ const SmartContracts: React.FC = () => {
       } else {
         throw new Error('No real data');
       }
-    } catch {
+    } catch (error) {
+      console.error('Failed to fetch executions:', error);
       // Mock execution data
       const mockExecutions: ContractExecution[] = [
         {
@@ -215,73 +214,50 @@ const SmartContracts: React.FC = () => {
             Smart contracts automate supply chain actions (e.g., quality checks, carbon offset payments). You can view, execute, and monitor contract status. All actions are tracked for transparency.
           </div>
         )}
-        {demoMode && (
-          <div className="bg-yellow-900/80 border border-yellow-500 rounded-lg p-4 mb-4 text-yellow-200 text-sm flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4" />
-            Demo Mode: Data is simulated for demonstration purposes.
+        
+        {/* Contracts Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          {contracts.map(contract => (
+            <div key={contract.id} className="bg-gray-800/80 rounded-xl p-6 border-2 border-purple-500/40 shadow-xl">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-white mb-2">{contract.name}</h3>
+                  <p className="text-gray-300 text-sm mb-3">{contract.description}</p>
+                  <div className="flex items-center gap-4">
+                    <span className={`text-sm font-medium ${getStatusColor(contract.status)}`}>
+                      {contract.status.charAt(0).toUpperCase() + contract.status.slice(1)}
+                    </span>
+                    <span className={`text-xs px-2 py-1 rounded-full ${getTypeColor(contract.type)}`}>
+                      {contract.type}
+                    </span>
           </div>
-        )}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Contracts List */}
-          <div className="lg:col-span-2">
-            <div className="bg-gray-800/80 rounded-xl p-6 border-2 border-purple-500/40 shadow-xl">
-              <h3 className="text-lg font-semibold text-white mb-4">Active Contracts</h3>
-              {loading ? (
-                <div className="text-center py-8">
-                  <Clock className="w-8 h-8 text-gray-400 animate-spin mx-auto mb-2" />
-                  <p className="text-gray-400">Loading contracts...</p>
                 </div>
-              ) : (
-                <div className="space-y-4">
-                  {contracts.map((contract) => (
-                    <div
-                      key={contract.id}
-                      className={`p-4 rounded-lg border-2 transition-all cursor-pointer ${
-                        selectedContract?.id === contract.id
-                          ? 'border-purple-500 bg-gray-700/50'
-                          : 'border-gray-600 bg-gray-700/30 hover:border-gray-500'
-                      }`}
-                      onClick={() => setSelectedContract(contract)}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className="font-semibold text-white">{contract.name}</h4>
-                        <div className="flex items-center gap-2">
-                          <span className={`px-2 py-1 rounded-full text-xs ${getTypeColor(contract.type)}`}>
-                            {contract.type}
-                          </span>
-                          <span className={`px-2 py-1 rounded-full text-xs ${getStatusColor(contract.status)}`}>
-                            {contract.status}
-                          </span>
-                        </div>
-                      </div>
-                      <p className="text-sm text-gray-400 mb-3">{contract.description}</p>
-                      <div className="flex items-center justify-between text-xs text-gray-500">
-                        <span>Executions: {contract.executionCount}</span>
-                        <span>Last: {new Date(contract.lastExecuted).toLocaleTimeString()}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => toggleContractStatus(contract.id, contract.status)}
+                    className={`px-3 py-1 text-xs rounded ${
+                      contract.status === 'active' 
+                        ? 'bg-yellow-600 hover:bg-yellow-700 text-white' 
+                        : 'bg-green-600 hover:bg-green-700 text-white'
+                    }`}
+                  >
+                    {contract.status === 'active' ? 'Pause' : 'Activate'}
+                  </button>
+                  <button
+                    onClick={() => executeContract(contract.id)}
+                    className="px-3 py-1 text-xs bg-purple-600 hover:bg-purple-700 text-white rounded"
+                  >
+                    Execute
+                  </button>
             </div>
           </div>
 
-          {/* Contract Details */}
-          <div className="lg:col-span-1">
-            {selectedContract ? (
-              <div className="bg-gray-800/80 rounded-xl p-6 border-2 border-purple-500/40 shadow-xl">
-                <h3 className="text-lg font-semibold text-white mb-4">Contract Details</h3>
-                <div className="space-y-4">
+              <div className="space-y-3">
                   <div>
-                    <h4 className="font-semibold text-white mb-2">{selectedContract.name}</h4>
-                    <p className="text-sm text-gray-400">{selectedContract.description}</p>
-                  </div>
-
-                  <div>
-                    <h5 className="font-medium text-white mb-2">Conditions</h5>
-                    <ul className="space-y-1">
-                      {selectedContract.conditions.map((condition, index) => (
-                        <li key={index} className="text-sm text-gray-300 flex items-center gap-2">
+                  <h4 className="text-sm font-medium text-gray-300 mb-1">Conditions</h4>
+                  <ul className="text-xs text-gray-400 space-y-1">
+                    {contract.conditions.map((condition, index) => (
+                      <li key={index} className="flex items-center gap-2">
                           <CheckCircle className="w-3 h-3 text-green-400" />
                           {condition}
                         </li>
@@ -290,85 +266,51 @@ const SmartContracts: React.FC = () => {
                   </div>
 
                   <div>
-                    <h5 className="font-medium text-white mb-2">Actions</h5>
-                    <ul className="space-y-1">
-                      {selectedContract.actions.map((action, index) => (
-                        <li key={index} className="text-sm text-gray-300 flex items-center gap-2">
-                          <Code className="w-3 h-3 text-blue-400" />
+                  <h4 className="text-sm font-medium text-gray-300 mb-1">Actions</h4>
+                  <ul className="text-xs text-gray-400 space-y-1">
+                    {contract.actions.map((action, index) => (
+                      <li key={index} className="flex items-center gap-2">
+                        <Zap className="w-3 h-3 text-blue-400" />
                           {action}
                         </li>
                       ))}
                     </ul>
                   </div>
 
-                  <div className="flex gap-2 pt-4">
-                    <button
-                      onClick={() => executeContract(selectedContract.id)}
-                      className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
-                    >
-                      <Play className="w-4 h-4" />
-                      Execute
-                    </button>
-                    <button
-                      onClick={() => toggleContractStatus(selectedContract.id, selectedContract.status)}
-                      className={`flex-1 px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-2 ${
-                        selectedContract.status === 'active'
-                          ? 'bg-yellow-600 hover:bg-yellow-700 text-white'
-                          : 'bg-blue-600 hover:bg-blue-700 text-white'
-                      }`}
-                    >
-                      {selectedContract.status === 'active' ? (
-                        <>
-                          <Pause className="w-4 h-4" />
-                          Pause
-                        </>
-                      ) : (
-                        <>
-                          <Play className="w-4 h-4" />
-                          Activate
-                        </>
-                      )}
-                    </button>
-                  </div>
+                <div className="flex items-center justify-between text-xs text-gray-400 pt-2 border-t border-gray-700">
+                  <span>Executions: {contract.executionCount}</span>
+                  <span>Last: {contract.lastExecuted ? new Date(contract.lastExecuted).toLocaleDateString() : 'Never'}</span>
                 </div>
               </div>
-            ) : (
-              <div className="bg-gray-800/80 rounded-xl p-6 border-2 border-gray-500/40 shadow-xl text-center">
-                <FileText className="w-16 h-16 text-gray-500 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-gray-400 mb-2">No Contract Selected</h3>
-                <p className="text-gray-500 text-sm">
-                  Select a contract from the list to view details and manage execution
-                </p>
               </div>
-            )}
-          </div>
+          ))}
         </div>
 
         {/* Recent Executions */}
-        <div className="mt-6 bg-gray-800/80 rounded-xl p-6 border-2 border-blue-500/40 shadow-xl">
+        <div className="bg-gray-800/80 rounded-xl p-6 border-2 border-purple-500/40 shadow-xl">
           <h3 className="text-lg font-semibold text-white mb-4">Recent Executions</h3>
           <div className="space-y-3">
-            {executions.map((execution) => (
-              <div key={execution.id} className="flex items-center gap-4 p-3 bg-gray-700/50 rounded-lg">
-                <div className={`w-3 h-3 rounded-full ${
-                  execution.status === 'success' ? 'bg-green-400' : 
-                  execution.status === 'failed' ? 'bg-red-400' : 'bg-yellow-400'
-                }`} />
-                <div className="flex-1">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-medium text-white">Contract #{execution.contractId}</span>
-                    <span className="text-sm text-gray-400">
-                      {new Date(execution.timestamp).toLocaleString()}
-                    </span>
+            {executions.map(execution => {
+              const contract = contracts.find(c => c.id === execution.contractId);
+              return (
+                <div key={execution.id} className="flex items-center justify-between p-3 bg-gray-900/50 rounded-lg">
+                  <div>
+                    <div className="text-sm font-medium text-white">{contract?.name || 'Unknown Contract'}</div>
+                    <div className="text-xs text-gray-400">{execution.result}</div>
                   </div>
-                  <div className="text-sm text-gray-300">{execution.result}</div>
+                  <div className="text-right">
+                    <div className={`text-xs px-2 py-1 rounded-full ${
+                      execution.status === 'success' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+                    }`}>
+                      {execution.status}
+                    </div>
+                    <div className="text-xs text-gray-400 mt-1">
+                      {new Date(execution.timestamp).toLocaleString()}
+                    </div>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <div className="text-sm text-gray-400">{execution.gasUsed.toLocaleString()}</div>
-                  <div className="text-xs text-gray-500">gas used</div>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
