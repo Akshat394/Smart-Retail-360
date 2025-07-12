@@ -9,6 +9,31 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
+// Basic Authentication for demo
+app.use((req, res, next) => {
+  // Skip auth for localhost
+  if (req.hostname === 'localhost' || req.hostname === '127.0.0.1') {
+    return next();
+  }
+  
+  const auth = req.headers.authorization;
+  if (!auth) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="SmartRetail360 Demo"');
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  
+  const credentials = Buffer.from(auth.split(' ')[1], 'base64').toString();
+  const [username, password] = credentials.split(':');
+  
+  // Demo credentials
+  if (username === 'demo' && password === 'smartretail360') {
+    return next();
+  }
+  
+  res.setHeader('WWW-Authenticate', 'Basic realm="SmartRetail360 Demo"');
+  return res.status(401).json({ error: 'Invalid credentials' });
+});
+
 app.use(complianceMiddleware);
 
 app.use((req, res, next) => {

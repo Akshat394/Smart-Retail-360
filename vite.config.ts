@@ -16,6 +16,24 @@ export default defineConfig({
         ]
       : []),
   ],
+  server: {
+    host: true,
+    port: 5173,
+    allowedHosts: [
+      'localhost',
+      '127.0.0.1',
+      '.loca.lt',
+      '.ngrok.io',
+      '.serveo.net',
+      '.tunnelto.dev',
+      '.loca.lt',
+      'tricky-hornets-stare.loca.lt',
+      'public-cooks-sip.loca.lt',
+      'large-boxes-wear.loca.lt',
+      'afraid-lies-juggle.loca.lt',
+      'two-plants-mix.loca.lt'
+    ],
+  },
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "client", "src"),

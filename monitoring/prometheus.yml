@@ -1,0 +1,74 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Backend API
+  - job_name: 'smartretail360-backend'
+    static_configs:
+      - targets: ['backend:3001']
+    metrics_path: '/api/metrics'
+    scrape_interval: 10s
+
+  # ML Service
+  - job_name: 'smartretail360-ml'
+    static_configs:
+      - targets: ['ml-service:8000']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  # Frontend (if it exposes metrics)
+  - job_name: 'smartretail360-frontend'
+    static_configs:
+      - targets: ['frontend:3000']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  # Node Exporter (system metrics)
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+
+  # PostgreSQL
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres:5432']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  # Redis
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis:6379']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  # Edge Device Simulator
+  - job_name: 'edge-simulator'
+    static_configs:
+      - targets: ['edge-simulator:9001']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # MQTT Broker
+  - job_name: 'mqtt-broker'
+    static_configs:
+      - targets: ['mqtt-broker:1883']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  # Blockchain (Ganache)
+  - job_name: 'blockchain'
+    static_configs:
+      - targets: ['blockchain:8545']
+    metrics_path: '/metrics'
+    scrape_interval: 60s 
