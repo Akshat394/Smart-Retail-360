@@ -191,7 +191,7 @@ const DigitalTwin: React.FC = () => {
       const updatedParams = { ...parameters, [key]: value };
       const impactPreview = calculateParameterImpact(selectedScenario, updatedParams);
       showNotification({ 
-        message: `${key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ')} changed to ${value}${currentScenario.parameters[key]?.unit || ''}. Estimated impact: ${impactPreview}`, 
+        message: `${key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ')} changed to ${value}${(currentScenario.parameters as any)[key]?.unit || ''}. Estimated impact: ${impactPreview}`, 
         type: 'info', 
         orderId: 0, 
         customerName: '' 
@@ -488,38 +488,38 @@ const DigitalTwin: React.FC = () => {
                   </div>
                   
                   {/* Enhanced Mathematical Metrics */}
-                  {simulationResult.impact.cost?.riskAdjusted && (
+                  {(simulationResult.impact.cost as any)?.riskAdjusted && (
                     <div className="flex items-center justify-between p-4 bg-blue-900/30 rounded-lg border border-blue-500/20">
                       <span className="text-blue-300">Risk-Adjusted Cost</span>
                       <span className="font-bold text-blue-300">
-                        ${(simulationResult.impact.cost.riskAdjusted).toFixed(2)}
+                        ${((simulationResult.impact.cost as any).riskAdjusted).toFixed(2)}
                       </span>
                     </div>
                   )}
                   
-                  {simulationResult.impact.sla?.serviceLevel && (
+                  {(simulationResult.impact.sla as any)?.serviceLevel && (
                     <div className="flex items-center justify-between p-4 bg-green-900/30 rounded-lg border border-green-500/20">
                       <span className="text-green-300">Optimal Service Level</span>
                       <span className="font-bold text-green-300">
-                        {((simulationResult.impact.sla.serviceLevel) * 100).toFixed(1)}%
+                        {(((simulationResult.impact.sla as any).serviceLevel) * 100).toFixed(1)}%
                       </span>
                     </div>
                   )}
                   
-                  {simulationResult.impact.inventory?.bullwhipEffect && (
+                  {(simulationResult.impact.inventory as any)?.bullwhipEffect && (
                     <div className="flex items-center justify-between p-4 bg-purple-900/30 rounded-lg border border-purple-500/20">
                       <span className="text-purple-300">Bullwhip Effect</span>
                       <span className="font-bold text-purple-300">
-                        {(simulationResult.impact.inventory.bullwhipEffect).toFixed(2)}x
+                        {((simulationResult.impact.inventory as any).bullwhipEffect).toFixed(2)}x
                       </span>
                     </div>
                   )}
                   
-                  {simulationResult.impact.sla?.capacityUtilization && (
+                  {(simulationResult.impact.sla as any)?.capacityUtilization && (
                     <div className="flex items-center justify-between p-4 bg-orange-900/30 rounded-lg border border-orange-500/20">
                       <span className="text-orange-300">Capacity Utilization</span>
                       <span className="font-bold text-orange-300">
-                        {((simulationResult.impact.sla.capacityUtilization) * 100).toFixed(1)}%
+                        {(((simulationResult.impact.sla as any).capacityUtilization) * 100).toFixed(1)}%
                       </span>
                     </div>
                   )}
