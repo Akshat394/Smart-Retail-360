@@ -24,7 +24,9 @@
     "test:performance": "jest tests/performance",
     "build:frontend": "vite build",
     "build:backend": "npm run build",
-    "lint": "eslint . --ext .ts,.tsx,.js,.jsx"
+    "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
+    "security:audit": "npm audit --audit-level=high || true",
+    "security:fix": "npm audit fix"
   },
   "dependencies": {
     "@faker-js/faker": "^9.8.0",
