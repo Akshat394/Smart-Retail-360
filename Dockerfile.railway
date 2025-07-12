@@ -20,7 +20,7 @@ RUN npm ci
 COPY . .
 
 # Build the application
-RUN npm run build:frontend && npm run build:backend
+RUN npm run build:frontend
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs
