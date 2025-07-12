@@ -1,4 +1,6 @@
-# 🚀 SmartRetail360 – AI-Powered Supply Chain Platform
+# SmartRetail360 - Complete Retail Management System
+
+<!-- CI/CD Pipeline Update: Latest package-lock.json sync -->
 
 ![TypeScript](https://img.shields.io/badge/TypeScript-4.9%2B-blue?logo=typescript)
 ![React](https://img.shields.io/badge/React-18-blue?logo=react)
