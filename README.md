@@ -18,7 +18,7 @@
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=for-the-badge)](http://makeapullrequest.com)
 [![Contributions Welcome](https://img.shields.io/badge/Contributions-Welcome-brightgreen.svg?style=for-the-badge)](CONTRIBUTING.md)
 
-[🌐 **Live Demo**](https://smartretail360-demo.vercel.app) | [📚 **Documentation**](https://smartretail360-docs.vercel.app) | [🚀 **Quick Start**](#-quick-start) | [💡 **Features**](#-key-features)
+[🌐 **Live Demo**](https://smartretail360-demo.vercel.app) | [📚 **Documentation**](https://smartretail360-docs.vercel.app) | [🚀 **Quick Start**](#-quick-start) | [💡 **Features**](#-key-features) | [📂 **Repository**](https://github.com/Akshat394/Smart-Retail-360)
 
 </div>
 
@@ -175,7 +175,7 @@ const deliveryModes = {
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/Smart-Retail-360.git
+git clone https://github.com/Akshat394/Smart-Retail-360.git
 cd Smart-Retail-360
 
 # Install dependencies
@@ -364,15 +364,15 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 <div align="center">
 
-[![GitHub Issues](https://img.shields.io/badge/GitHub-Issues-181717?style=for-the-badge&logo=github)](https://github.com/your-username/Smart-Retail-360/issues)
+[![GitHub Issues](https://img.shields.io/badge/GitHub-Issues-181717?style=for-the-badge&logo=github)](https://github.com/Akshat394/Smart-Retail-360/issues)
 [![Discord](https://img.shields.io/badge/Discord-Support-5865F2?style=for-the-badge&logo=discord)](https://discord.gg/smartretail360)
 [![Email](https://img.shields.io/badge/Email-Contact-D14836?style=for-the-badge&logo=gmail)](mailto:support@smartretail360.com)
 
 **Made with ❤️ by the SmartRetail360 Team**
 
-[![GitHub Stars](https://img.shields.io/github/stars/your-username/Smart-Retail-360?style=social)](https://github.com/your-username/Smart-Retail-360)
-[![GitHub Forks](https://img.shields.io/github/forks/your-username/Smart-Retail-360?style=social)](https://github.com/your-username/Smart-Retail-360)
-[![GitHub Watchers](https://img.shields.io/github/watchers/your-username/Smart-Retail-360?style=social)](https://github.com/your-username/Smart-Retail-360)
+[![GitHub Stars](https://img.shields.io/github/stars/Akshat394/Smart-Retail-360?style=social)](https://github.com/Akshat394/Smart-Retail-360)
+[![GitHub Forks](https://img.shields.io/github/forks/Akshat394/Smart-Retail-360?style=social)](https://github.com/Akshat394/Smart-Retail-360)
+[![GitHub Watchers](https://img.shields.io/github/watchers/Akshat394/Smart-Retail-360?style=social)](https://github.com/Akshat394/Smart-Retail-360)
 
 </div>
 
