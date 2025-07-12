@@ -4,10 +4,13 @@
   "setupFilesAfterEnv": ["<rootDir>/tests/setup.ts"],
   "moduleNameMapper": {
     "^@/(.*)$": "<rootDir>/client/src/$1",
-    "^~/(.*)$": "<rootDir>/server/src/$1"
+    "^~/(.*)$": "<rootDir>/server/src/$1",
+    "\\.(css|less|scss|sass)$": "identity-obj-proxy"
   },
   "transform": {
-    "^.+\\.(ts|tsx)$": "ts-jest"
+    "^.+\\.(ts|tsx)$": ["ts-jest", {
+      "tsconfig": "tsconfig.json"
+    }]
   },
   "testMatch": [
     "**/tests/**/*.test.(ts|tsx|js)"
@@ -15,15 +18,16 @@
   "collectCoverageFrom": [
     "client/src/**/*.{ts,tsx}",
     "server/src/**/*.ts",
-    "!**/*.d.ts"
+    "!**/*.d.ts",
+    "!**/node_modules/**"
   ],
   "testEnvironmentOptions": {
     "url": "http://localhost"
   },
   "moduleFileExtensions": ["ts", "tsx", "js", "jsx", "json"],
-  "globals": {
-    "ts-jest": {
-      "tsconfig": "tsconfig.json"
-    }
-  }
+  "transformIgnorePatterns": [
+    "node_modules/(?!(react-router|@react-router)/)"
+  ],
+  "testTimeout": 10000,
+  "verbose": true
 } 

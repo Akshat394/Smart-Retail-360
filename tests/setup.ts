@@ -79,4 +79,8 @@ if (typeof global !== 'undefined') {
     warn: jest.fn(),
     error: jest.fn(),
   };
-} 
+}
+
+// Mock process.env for tests
+process.env.NODE_ENV = 'test';
+process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test_db'; 
