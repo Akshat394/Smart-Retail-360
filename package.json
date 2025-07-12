@@ -22,7 +22,7 @@
     "test:ml": "cd ml_service && python -m pytest tests/ml",
     "test:integration": "jest tests/integration",
     "test:performance": "jest tests/performance",
-    "build:frontend": "cd client && npm run build",
+    "build:frontend": "vite build",
     "build:backend": "npm run build",
     "lint": "eslint . --ext .ts,.tsx,.js,.jsx"
   },
