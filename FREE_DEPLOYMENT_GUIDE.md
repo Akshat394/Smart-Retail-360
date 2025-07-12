@@ -20,20 +20,31 @@ This guide will help you deploy your SmartRetail360 application for free using v
    git push origin main
    ```
 
-2. **Deploy on Render:**
+2. **Deploy Backend and ML Service:**
    - Go to [render.com](https://render.com)
    - Sign up with GitHub
    - Click "New +" → "Blueprint"
    - Connect your GitHub repository
-   - Render will automatically detect the `render.yaml` and deploy
+   - Render will automatically detect the `render.yaml` and deploy backend + ML service
 
-3. **Set Environment Variables:**
+3. **Deploy Frontend Separately:**
+   - In Render dashboard, click "New +" → "Static Site"
+   - Connect your GitHub repository
+   - Set:
+     - **Name:** smart-retail-frontend
+     - **Build Command:** `cd client && npm install && npm run build`
+     - **Publish Directory:** `client/dist`
+     - **Root Directory:** `client`
+
+4. **Set Environment Variables:**
    - Go to your backend service dashboard
    - Add `DATABASE_URL` (you can use Neon.tech free PostgreSQL)
    - The `JWT_SECRET` will be auto-generated
 
-4. **Update Frontend URL:**
-   - After backend deploys, update the `VITE_API_URL` in frontend environment variables
+5. **Update Frontend Environment:**
+   - In your frontend service, add environment variables:
+     - `VITE_API_URL`: `https://smart-retail-backend.onrender.com/api`
+     - `VITE_ML_SERVICE_URL`: `https://smart-retail-ml-service.onrender.com`
 
 **Expected URLs:**
 - Frontend: `https://smart-retail-frontend.onrender.com`

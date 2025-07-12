@@ -18,20 +18,6 @@ services:
     rootDir: server
 
   - type: web
-    name: smart-retail-frontend
-    env: static
-    plan: free
-    buildCommand: npm install && npm run build
-    startCommand: npx serve -s dist -l 3000
-    rootDir: client
-    envVars:
-      - key: VITE_API_URL
-        value: https://smart-retail-backend.onrender.com/api # Update this after backend deploys
-      - key: VITE_ML_SERVICE_URL
-        value: https://smart-retail-backend.onrender.com/ml
-    autoDeploy: true
-
-  - type: web
     name: smart-retail-ml-service
     env: python
     plan: free
