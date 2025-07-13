@@ -273,8 +273,9 @@ jobs:
         mkdir -p deployment-package
         cp -r artifacts/* deployment-package/
         cp docker-compose.yml deployment-package/
-        cp render.yaml deployment-package/
+        cp vercel.json deployment-package/
         cp package.json deployment-package/
+        cp VERCEL_DEPLOYMENT_GUIDE.md deployment-package/
         
     - name: Upload deployment package
       uses: actions/upload-artifact@v4
@@ -283,11 +284,50 @@ jobs:
         path: deployment-package/
         retention-days: 7
 
+  # Vercel Deployment
+  vercel-deploy:
+    name: Deploy to Vercel
+    runs-on: ubuntu-latest
+    needs: [frontend, backend, ml-service, integration, security, docker, performance, deploy-prep]
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        
+    - name: Install Vercel CLI
+      run: npm install -g vercel@latest
+      
+    - name: Deploy to Vercel
+      run: |
+        echo "🚀 Deploying to Vercel..."
+        echo "This is a placeholder for Vercel deployment"
+        echo "To deploy to Vercel:"
+        echo "1. Connect your repository to Vercel"
+        echo "2. Configure environment variables"
+        echo "3. Deploy using Vercel dashboard or CLI"
+        echo "See VERCEL_DEPLOYMENT_GUIDE.md for details"
+      continue-on-error: true
+      
+    - name: Upload deployment status
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: vercel-deployment-status
+        path: deployment-status.txt
+        retention-days: 1
+
   # Final Status Check
   status:
     name: Pipeline Status
     runs-on: ubuntu-latest
-    needs: [frontend, backend, ml-service, integration, security, docker, performance, deploy-prep]
+    needs: [frontend, backend, ml-service, integration, security, docker, performance, deploy-prep, vercel-deploy]
     if: always()
     
     steps:
