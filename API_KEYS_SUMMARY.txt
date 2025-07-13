@@ -1,0 +1,129 @@
+# SmartRetail360 API Keys Summary
+
+## 🔑 Currently Used API Keys
+
+### 1. Google Maps API Key
+**Location:** Hardcoded in frontend components
+**Key:** `AIzaSyDvT7wST6n7YFSb-Afkt307F2kiX9W_b1o`
+**Files:**
+- `client/src/components/VehicleMap.tsx` (line 6)
+- `client/src/components/RoboticsPanel.tsx` (line 48)
+
+**Usage:** Google Maps integration for vehicle tracking and warehouse visualization
+
+### 2. Environment Variables (Backend)
+
+#### Database
+- `DATABASE_URL` - PostgreSQL connection string
+
+#### External APIs
+- `GOOGLE_MAPS_API_KEY` - Google Maps API key for backend route optimization
+- `OPENWEATHER_API_KEY` - OpenWeather API for weather data
+- `ERP_API_KEY` - ERP system integration
+- `LOGISTICS_API_KEY` - Logistics service integration
+
+#### ML Service
+- `ML_SERVICE_URL` - Machine learning service endpoint
+
+#### MQTT
+- `MQTT_BROKER_URL` - MQTT broker for IoT device communication
+
+### 3. Frontend Environment Variables (VITE_)
+
+#### API Endpoints
+- `VITE_API_URL` - Backend API URL
+- `VITE_ML_SERVICE_URL` - ML service URL
+- `VITE_WS_URL` - WebSocket URL
+
+#### Push Notifications
+- `VITE_VAPID_PUBLIC_KEY` - VAPID public key for push notifications
+
+### 4. Blockchain (Polygon Mumbai)
+
+#### Network Configuration
+- `POLYGON_MUMBAI_RPC_URL` - Polygon Mumbai RPC endpoint
+- `DEPLOYER_PRIVATE_KEY` - Private key for contract deployment
+- `POLYGONSCAN_API_KEY` - Polygonscan API key for contract verification
+
+## 🚨 Security Recommendations
+
+### 1. Move Google Maps API Key to Environment Variables
+**Current Issue:** API key is hardcoded in frontend components
+**Solution:** 
+```typescript
+// Replace hardcoded key with environment variable
+const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+```
+
+### 2. Add to .env files
+Create `.env` files with these variables:
+
+**Backend .env:**
+```
+DATABASE_URL=your_postgresql_connection_string
+GOOGLE_MAPS_API_KEY=your_google_maps_api_key
+OPENWEATHER_API_KEY=your_openweather_api_key
+ERP_API_KEY=your_erp_api_key
+LOGISTICS_API_KEY=your_logistics_api_key
+ML_SERVICE_URL=http://localhost:8000
+MQTT_BROKER_URL=mqtt://localhost:1883
+```
+
+**Frontend .env:**
+```
+VITE_API_URL=http://localhost:3001/api
+VITE_ML_SERVICE_URL=http://localhost:8000
+VITE_WS_URL=ws://localhost:3001/ws
+VITE_GOOGLE_MAPS_API_KEY=your_google_maps_api_key
+VITE_VAPID_PUBLIC_KEY=your_vapid_public_key
+```
+
+**Blockchain .env:**
+```
+POLYGON_MUMBAI_RPC_URL=your_polygon_mumbai_rpc_url
+DEPLOYER_PRIVATE_KEY=your_private_key
+POLYGONSCAN_API_KEY=your_polygonscan_api_key
+```
+
+## 📋 Required API Keys for Full Functionality
+
+### Essential (Must Have)
+1. **Google Maps API Key** - For maps and route optimization
+2. **Database URL** - For data persistence
+3. **ML Service URL** - For AI predictions
+
+### Optional (Enhanced Features)
+1. **OpenWeather API Key** - Weather-based routing
+2. **ERP API Key** - External ERP integration
+3. **Logistics API Key** - Third-party logistics
+4. **VAPID Public Key** - Push notifications
+5. **Polygon Mumbai RPC URL** - Blockchain features
+6. **Polygonscan API Key** - Contract verification
+
+## 🔧 Quick Fix for Current Hardcoded Key
+
+To immediately secure the Google Maps API key:
+
+1. **Add to environment variables:**
+```bash
+# Frontend .env
+VITE_GOOGLE_MAPS_API_KEY=AIzaSyDvT7wST6n7YFSb-Afkt307F2kiX9W_b1o
+```
+
+2. **Update components:**
+```typescript
+// In VehicleMap.tsx and RoboticsPanel.tsx
+const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || 'AIzaSyDvT7wST6n7YFSb-Afkt307F2kiX9W_b1o';
+```
+
+## 📊 Current API Key Status
+
+✅ **Found:** 1 hardcoded Google Maps API key
+⚠️ **Missing:** Environment variable configuration
+🔒 **Security:** Needs immediate attention (hardcoded keys)
+
+## 🎯 Next Steps
+
+1. **Immediate:** Move hardcoded API key to environment variables
+2. **Short-term:** Set up all required environment variables
+3. **Long-term:** Implement API key rotation and monitoring 
