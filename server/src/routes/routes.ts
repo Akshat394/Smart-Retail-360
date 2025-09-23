@@ -183,6 +183,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(safeUser);
   });
 
+  // Public health endpoint (no auth) for uptime checks and load balancers
+  app.get('/healthz', (_req, res) => {
+    res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
+
   // Protected API Routes
   app.get('/api/system-health', authenticate, async (req, res) => {
     try {
@@ -2886,9 +2891,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // WebSocket Server Setup
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
   
+  // Heartbeat to keep connections alive and remove dead ones
+  // Using any-casts to avoid augmenting ws types
+  const heartbeatIntervalMs = 30000;
+  const heartbeat = setInterval(() => {
+    wss.clients.forEach((client: any) => {
+      if (client.isAlive === false) {
+        try { client.terminate(); } catch { /* ignore */ }
+        return;
+      }
+      client.isAlive = false;
+      try { client.ping(); } catch { /* ignore */ }
+    });
+  }, heartbeatIntervalMs);
+
   wss.on('connection', (ws) => {
     console.log('New WebSocket client connected');
     clients.add(ws);
+    (ws as any).isAlive = true;
 
     ws.on('close', () => {
       console.log('WebSocket client disconnected');
@@ -2899,6 +2919,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error('WebSocket error:', error);
       clients.delete(ws);
     });
+
+    ws.on('pong', () => {
+      (ws as any).isAlive = true;
+    });
+  });
+
+  wss.on('close', () => {
+    clearInterval(heartbeat);
   });
 
   // PostgreSQL LISTEN setup for real-time notifications
