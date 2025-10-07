@@ -1855,12 +1855,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Combine all recommendations (demo + live)
-      const recommendations = [
+      let recommendations = [
         ...demoRecommendations,
         ...anomalies,
         ...lowStock,
         ...demandSpikes
       ];
+
+      // Fallback: if no data-driven recs, return demo defaults
+      if (!recommendations.length) {
+        recommendations = [
+          {
+            type: 'anomaly',
+            message: 'Anomaly detected: Sudden drop in on-time delivery rate in Mumbai',
+            actions: [],
+            data: { metric: 'onTimeDelivery', value: 72.1, reason: 'Unexpected traffic event' }
+          },
+          {
+            type: 'low_stock',
+            message: 'Low stock: Great Value Milk in Warehouse 2 (8 left)',
+            actions: [
+              { label: 'Transfer Stock', action: 'transfer', productId: 1, location: 'Warehouse 2' },
+              { label: 'Create Purchase Order', action: 'purchase_order', productId: 1 }
+            ],
+            data: { id: 1, productName: 'Great Value Milk', location: 'Warehouse 2', quantity: 8 }
+          },
+          {
+            type: 'demand_spike',
+            message: "Demand spike predicted for Sam's Choice Soda in Warehouse 3. Consider restocking.",
+            actions: [
+              { label: 'Approve Restock', action: 'restock', productId: 2, location: 'Warehouse 3' }
+            ],
+            data: { id: 2, productName: "Sam's Choice Soda", location: 'Warehouse 3', quantity: 14 }
+          }
+        ];
+      }
       res.json(recommendations);
     } catch (error) {
       res.status(500).json({ error: 'Failed to generate AI recommendations' });
