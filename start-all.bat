@@ -4,7 +4,7 @@ echo.
 echo This will start:
 echo - Backend Server (Port 5000)
 echo - ML Service (Port 8001) 
-echo - Frontend Dev Server (Port 5173)
+echo - Frontend Dev Server (Port 5000)
 echo.
 echo Press Ctrl+C to stop all services
 echo.

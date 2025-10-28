@@ -212,7 +212,7 @@ cd ml_service && python main.py
 docker-compose up -d
 
 # Access the application
-# Frontend: http://localhost:5173
+# Frontend: http://localhost:5000
 # Backend: http://localhost:5000
 # ML Service: http://localhost:8000
 ```
