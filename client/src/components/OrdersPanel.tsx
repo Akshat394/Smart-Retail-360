@@ -64,9 +64,11 @@ const OrdersPanel: React.FC<Props> = ({ filters, search = '' }) => {
     [filteredOrders]
   );
 
-  // Pagination
+  // Pagination - memoized to prevent infinite re-renders
   const totalPages = Math.ceil(filteredOrders.length / rowsPerPage) || 1;
-  const paginatedOrders = filteredOrders.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
+  const paginatedOrders = useMemo(() => {
+    return filteredOrders.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
+  }, [filteredOrders, currentPage, rowsPerPage]);
 
   // Reset to page 1 when filters/search change
   React.useEffect(() => { setCurrentPage(1); }, [filters, orderSearch]);
@@ -189,12 +191,24 @@ const OrdersPanel: React.FC<Props> = ({ filters, search = '' }) => {
     setTimeout(() => setToast(null), 2000);
   };
 
+  // Track pending requests to prevent duplicates
+  const pendingRequests = useRef<Set<number>>(new Set());
+  const fetchedOrders = useRef<Set<number>>(new Set());
+
   // Helper to get delivery recommendation for an order
   async function fetchDeliveryRecommendation(order: Order) {
+    // Prevent duplicate requests
+    if (pendingRequests.current.has(order.id) || fetchedOrders.current.has(order.id)) {
+      return null;
+    }
+
     // Mock values for demo: infer from order or use defaults
     const distance = 10; // TODO: calculate from warehouse to order.location
     const priority = 'normal'; // or infer from order
     const package_size = order.quantity <= 2 ? 'small' : order.quantity <= 5 ? 'medium' : 'large';
+    
+    pendingRequests.current.add(order.id);
+    
     try {
       const res = await fetch('/api/recommend/delivery-mode', {
         method: 'POST',
@@ -202,22 +216,58 @@ const OrdersPanel: React.FC<Props> = ({ filters, search = '' }) => {
         body: JSON.stringify({ distance, priority, package_size })
       });
       if (!res.ok) return null;
-      return await res.json();
+      const data = await res.json();
+      fetchedOrders.current.add(order.id);
+      return data;
     } catch {
       return null;
+    } finally {
+      pendingRequests.current.delete(order.id);
     }
   }
 
+  // Stable reference for order IDs to prevent unnecessary re-renders
+  const paginatedOrderIds = useMemo(() => 
+    paginatedOrders.map(o => o.id).sort((a, b) => a - b), 
+    [paginatedOrders]
+  );
+  
+  // Stable string reference for dependency tracking
+  const paginatedOrderIdsKey = useMemo(() => 
+    paginatedOrderIds.join(','), 
+    [paginatedOrderIds]
+  );
+
   useEffect(() => {
-    paginatedOrders.forEach(order => {
-      if (!deliveryModes[order.id]) {
-        fetchDeliveryRecommendation(order).then(rec => {
-          setDeliveryModes(prev => ({ ...prev, [order.id]: rec }));
+    // Only fetch for orders that haven't been fetched yet
+    const ordersToFetch = paginatedOrders.filter(order => 
+      !deliveryModes[order.id] && 
+      !pendingRequests.current.has(order.id) &&
+      !fetchedOrders.current.has(order.id)
+    );
+
+    if (ordersToFetch.length === 0) {
+      return; // Nothing to fetch
+    }
+
+    // Limit concurrent requests to prevent overwhelming the server
+    const batchSize = 5;
+    for (let i = 0; i < ordersToFetch.length; i += batchSize) {
+      const batch = ordersToFetch.slice(i, i + batchSize);
+      // Use setTimeout to stagger requests slightly
+      setTimeout(() => {
+        batch.forEach(order => {
+          fetchDeliveryRecommendation(order).then(rec => {
+            if (rec) {
+              setDeliveryModes(prev => ({ ...prev, [order.id]: rec }));
+            }
+          });
         });
-      }
-    });
+      }, i * 50); // 50ms delay between batches
+    }
+    // Only depend on stable order IDs key - deliveryModes changes are handled by the filter check
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paginatedOrders]);
+  }, [paginatedOrderIdsKey]);
 
   const handleCreatePO = (order: Order) => {
     setPoOrder(order);

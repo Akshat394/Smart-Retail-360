@@ -117,15 +117,19 @@ const Login: React.FC = () => {
 
         {/* User Credentials */}
         <div className="mt-8 p-4 bg-gray-700/50 rounded-lg border border-gray-600">
-          <h3 className="text-sm font-semibold text-gray-300 mb-3">User Accounts:</h3>
+          <h3 className="text-sm font-semibold text-gray-300 mb-3">Demo Login Credentials:</h3>
           <div className="space-y-2 text-xs text-gray-400">
-            <div><strong>Admin:</strong> akshattrivedi394</div>
-            <div><strong>Manager:</strong> arushigupta1818</div>
-            <div><strong>Operations:</strong> abhisheksriv6387</div>
-            <div><strong>Analyst:</strong> tanveerhk</div>
-            <div><strong>Planner:</strong> arushigupta1212</div>
+            <div><strong>Admin:</strong> akshattrivedi394 / demo123</div>
+            <div><strong>Manager:</strong> arushigupta1818 / demo123</div>
+            <div><strong>Operations:</strong> abhisheksriv6387 / demo123</div>
+            <div><strong>Analyst:</strong> tanveerhk / demo123</div>
+            <div><strong>Planner:</strong> arushigupta1212 / demo123</div>
+            <div className="border-t border-gray-600 pt-2 mt-2">
+              <div><strong>Quick Demo:</strong> demo / demo123</div>
+              <div><strong>Admin Alt:</strong> admin / admin123</div>
+            </div>
           </div>
-          <p className="text-xs text-gray-500 mt-3">Use your assigned credentials to log in</p>
+          <p className="text-xs text-gray-500 mt-3">Format: username / password</p>
         </div>
       </motion.div>
     </div>

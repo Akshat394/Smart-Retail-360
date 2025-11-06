@@ -77,7 +77,7 @@ const VideoAnalyticsPanel: React.FC = () => {
   const videoImageRef = useRef<HTMLImageElement>(null);
 
   // API base URL
-  const API_BASE = 'http://localhost:8001';
+  const API_BASE = import.meta.env.VITE_ML_SERVICE_URL || 'http://localhost:8000';
 
   useEffect(() => {
     // Fetch available videos on mount

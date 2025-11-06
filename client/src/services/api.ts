@@ -1,6 +1,8 @@
 import { apiRequest } from '../hooks/useAuth';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+// Use relative URLs since backend serves frontend on same port (5000)
+// This ensures API calls work regardless of port configuration
+const API_BASE_URL = '/api';
 
 class ApiService {
   private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
@@ -281,6 +283,36 @@ class ApiService {
       method: 'POST',
       body: JSON.stringify({ graph, start, end }),
     });
+  }
+
+  // Comprehensive Route Optimization APIs
+  async optimizeRouteWithCO2(origin: string, destination: string, mode: 'distance' | 'co2' | 'time' | 'balanced' = 'balanced', vehicleType: string = 'truck') {
+    return this.request('/route-optimization/optimize', {
+      method: 'POST',
+      body: JSON.stringify({ origin, destination, mode, vehicleType, useAStar: true }),
+    });
+  }
+
+  async startDelivery(deliveryId: string, origin: string, destination: string, vehicleType: string = 'truck', deliveryTeamId?: string) {
+    return this.request('/route-optimization/start-delivery', {
+      method: 'POST',
+      body: JSON.stringify({ deliveryId, origin, destination, vehicleType, deliveryTeamId }),
+    });
+  }
+
+  async completeDelivery(deliveryId: string, actualTime: number, actualCO2: number) {
+    return this.request('/route-optimization/complete-delivery', {
+      method: 'POST',
+      body: JSON.stringify({ deliveryId, actualTime, actualCO2 }),
+    });
+  }
+
+  async getActiveDeliveries() {
+    return this.request('/route-optimization/active-deliveries');
+  }
+
+  async getDeliveryStatus(deliveryId: string) {
+    return this.request(`/route-optimization/delivery/${deliveryId}`);
   }
 
   async optimizeStock(supply: number[], demand: number[], cost_matrix: number[][]) {

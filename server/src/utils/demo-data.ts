@@ -1,6 +1,6 @@
 import { storage } from "./storage.js";
 import { db } from './db.js';
-import { routes, type IndianCity, suppliers, inventory as inventoryTable } from '../../../shared/schema';
+import { routes, type IndianCity, suppliers, inventory as inventoryTable, users } from '../../../shared/schema';
 import { eq, sql } from "drizzle-orm";
 import { faker } from '@faker-js/faker';
 
@@ -369,7 +369,47 @@ export async function seedInitialInventory() {
   }
 }
 
+// Function to seed demo users
+export async function seedDemoUsers() {
+  console.log('Seeding demo users...');
+  
+  // Create the users shown in the login form
+  const demoUsers = [
+    { username: 'akshattrivedi394', password: 'demo123', email: 'akshattrivedi394@gmail.com', firstName: 'Akshat', lastName: 'Trivedi', role: 'admin' },
+    { username: 'arushigupta1818', password: 'demo123', email: 'arushigupta1818@gmail.com', firstName: 'Arushi', lastName: 'Gupta', role: 'manager' },
+    { username: 'abhisheksriv6387', password: 'demo123', email: 'abhisheksriv6387@gmail.com', firstName: 'Abhishek', lastName: 'Srivastava', role: 'operations' },
+    { username: 'tanveerhk', password: 'demo123', email: 'tanveerhk.it@gmail.com', firstName: 'Tanveer', lastName: 'HK', role: 'analyst' },
+    { username: 'arushigupta1212', password: 'demo123', email: 'arushigupta1212@gmail.com', firstName: 'Arushi', lastName: 'Gupta', role: 'planner' },
+    // Also create email-based demo users for backward compatibility
+    { username: 'demo', password: 'demo123', email: 'demo@smartretail360.com', firstName: 'Demo', lastName: 'User', role: 'admin' },
+    { username: 'admin', password: 'admin123', email: 'admin@smartretail360.com', firstName: 'Admin', lastName: 'User', role: 'admin' },
+    { username: 'manager', password: 'manager123', email: 'manager@smartretail360.com', firstName: 'Store', lastName: 'Manager', role: 'manager' },
+    { username: 'operator', password: 'operator123', email: 'operator@smartretail360.com', firstName: 'Warehouse', lastName: 'Operator', role: 'operations' },
+  ];
+
+  for (const userData of demoUsers) {
+    try {
+      // Check if user already exists
+      const existingUser = await db.query.users.findFirst({
+        where: eq(users.username, userData.username)
+      });
+      
+      if (!existingUser) {
+        await storage.createUser(userData);
+        console.log(`Created user: ${userData.username}`);
+      } else {
+        console.log(`User already exists: ${userData.username}`);
+      }
+    } catch (error) {
+      console.error(`Failed to create user ${userData.username}:`, error);
+    }
+  }
+  
+  console.log('Demo users seeding completed!');
+}
+
 export async function seedDatabase() {
+  await seedDemoUsers();
   await seedRoutesWithIndianCities();
   await seedSuppliers();
   await seedInitialInventory();
@@ -380,6 +420,14 @@ export async function seedDatabase() {
 
 if (process.argv.includes('--seed-suppliers')) {
   seedSuppliers().then(() => process.exit(0));
+}
+
+if (process.argv.includes('--seed-users')) {
+  seedDemoUsers().then(() => process.exit(0));
+}
+
+if (process.argv.includes('--seed-all')) {
+  seedDatabase().then(() => process.exit(0));
 }
 
 export function generateSuppliers(count = 10) {

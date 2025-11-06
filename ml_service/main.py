@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
 from typing import List, Dict, Any, Literal, Optional
+from contextlib import asynccontextmanager
 import joblib
 import os
 import numpy as np
@@ -27,17 +28,6 @@ from vision.video_streamer import stream_video_frames, stream_demo_sequence, get
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="SmartRetail360 ML Service", version="2.0.0")
-
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 # Global model instances
 ensemble_model = None
 individual_models = {
@@ -54,6 +44,63 @@ MODEL_CONFIG = {
     'prediction_steps': 30,
     'retrain_interval_hours': 24
 }
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for startup and shutdown events"""
+    # Startup
+    global ensemble_model, individual_models, video_processor
+    
+    logger.info("Initializing SmartRetail360 ML Service...")
+    
+    try:
+        # Initialize ensemble model
+        ensemble_model = EnsembleModel(
+            ensemble_method=MODEL_CONFIG['ensemble_method'],
+            dynamic_weights=MODEL_CONFIG['dynamic_weights']
+        )
+        
+        # Initialize individual models
+        individual_models['arima'] = ARIMAModel()
+        individual_models['lstm'] = LSTMModel(
+            sequence_length=MODEL_CONFIG['sequence_length']
+        )
+        individual_models['transformer'] = TransformerModel(
+            sequence_length=MODEL_CONFIG['sequence_length']
+        )
+        
+        # Try to load pre-trained models
+        await load_pretrained_models()
+        
+        # Initialize video processor
+        try:
+            video_processor = VideoProcessor()
+            logger.info("Video processor initialized successfully")
+        except Exception as e:
+            logger.warning(f"Failed to initialize video processor: {e}")
+            video_processor = None
+        
+        logger.info("ML Service initialized successfully")
+        
+    except Exception as e:
+        logger.error(f"Error initializing ML Service: {e}")
+        raise
+    
+    yield  # Application runs here
+    
+    # Shutdown (if needed)
+    logger.info("Shutting down ML Service...")
+
+app = FastAPI(title="SmartRetail360 ML Service", version="2.0.0", lifespan=lifespan)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Pydantic models for API
 class ForecastRequest(BaseModel):
@@ -148,47 +195,6 @@ anomaly_model = joblib.load(ANOMALY_PATH) if os.path.exists(ANOMALY_PATH) else N
 
 # Initialize video processor
 video_processor = None
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize models on startup"""
-    global ensemble_model, individual_models
-    
-    logger.info("Initializing SmartRetail360 ML Service...")
-    
-    try:
-        # Initialize ensemble model
-        ensemble_model = EnsembleModel(
-            ensemble_method=MODEL_CONFIG['ensemble_method'],
-            dynamic_weights=MODEL_CONFIG['dynamic_weights']
-        )
-        
-        # Initialize individual models
-        individual_models['arima'] = ARIMAModel()
-        individual_models['lstm'] = LSTMModel(
-            sequence_length=MODEL_CONFIG['sequence_length']
-        )
-        individual_models['transformer'] = TransformerModel(
-            sequence_length=MODEL_CONFIG['sequence_length']
-        )
-        
-        # Try to load pre-trained models
-        await load_pretrained_models()
-        
-        # Initialize video processor
-        global video_processor
-        try:
-            video_processor = VideoProcessor()
-            logger.info("Video processor initialized successfully")
-        except Exception as e:
-            logger.warning(f"Failed to initialize video processor: {e}")
-            video_processor = None
-        
-        logger.info("ML Service initialized successfully")
-        
-    except Exception as e:
-        logger.error(f"Error initializing ML Service: {e}")
-        raise
 
 async def load_pretrained_models():
     """Load pre-trained models if available"""
@@ -655,4 +661,7 @@ async def vision_stream_demo_get(
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001) 
+    import os
+    # Use environment variable or default to 8000 (standard port)
+    port = int(os.getenv("ML_SERVICE_PORT", "8000"))
+    uvicorn.run(app, host="0.0.0.0", port=port) 

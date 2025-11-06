@@ -21,6 +21,12 @@ const Routes: React.FC = () => {
   const [routeAnalytics, setRouteAnalytics] = useState<any>(null);
   const [alerts, setAlerts] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'routes' | 'drivers' | 'ai-command'>('routes');
+  
+  // City selection and route optimization
+  const availableCities = ['Delhi', 'Mumbai', 'Pune', 'Bengaluru', 'Chennai', 'Kolkata', 'Hyderabad'];
+  const [selectedCity, setSelectedCity] = useState<string | null>(null);
+  const [cityRoutes, setCityRoutes] = useState<any[]>([]);
+  const [loadingCityRoutes, setLoadingCityRoutes] = useState(false);
 
   const canManageRoutes = user && ['admin', 'manager', 'operations'].includes(user.role);
 
@@ -34,11 +40,58 @@ const Routes: React.FC = () => {
     try {
       const data = await apiService.getRoutes();
       setRoutes(data as RouteWithDriver[]);
+      
+      // ROOT CAUSE FIX: Routes are now properly persisted to database when deliveries start
+      // No need for fallback conversion - routes come directly from database
+      // This ensures data consistency and proper route management
     } catch (error) {
       console.error('Failed to load routes:', error);
+      // On error, show empty state with helpful message
+      setRoutes([]);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Load routes for selected city
+  const loadCityRoutes = async (city: string) => {
+    setLoadingCityRoutes(true);
+    try {
+      // Get active deliveries
+      const deliveries: any = await apiService.getActiveDeliveries();
+      const cityDeliveries = deliveries.filter((d: any) => 
+        d.path?.includes(city) || d.origin === city || d.destination === city
+      );
+      
+      // Also optimize route from Delhi to this city
+      if (city !== 'Delhi') {
+        try {
+          const route: any = await apiService.optimizeRouteWithCO2('Delhi', city, 'balanced', 'truck');
+          setCityRoutes([...cityDeliveries, {
+            ...route,
+            origin: 'Delhi',
+            destination: city,
+            status: 'available',
+            deliveryId: `ROUTE-${city}`,
+            path: route.path || ['Delhi', city]
+          }]);
+        } catch (e) {
+          setCityRoutes(cityDeliveries);
+        }
+      } else {
+        setCityRoutes(cityDeliveries);
+      }
+    } catch (e) {
+      console.error('Failed to load city routes:', e);
+      setCityRoutes([]);
+    } finally {
+      setLoadingCityRoutes(false);
+    }
+  };
+
+  const handleCitySelect = (city: string) => {
+    setSelectedCity(city);
+    loadCityRoutes(city);
   };
 
   const loadRouteAnalytics = async () => {
@@ -117,6 +170,32 @@ const Routes: React.FC = () => {
         </div>
       </motion.div>
 
+      {/* City Selection */}
+      <motion.div
+        className="bg-gray-800 rounded-xl border border-gray-700 p-4 mb-6"
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+      >
+        <h3 className="text-lg font-semibold text-white mb-4">🗺️ Select City to View Routes</h3>
+        <div className="flex flex-wrap gap-3">
+          {availableCities.map((city) => (
+            <button
+              key={city}
+              onClick={() => handleCitySelect(city)}
+              className={`px-6 py-3 rounded-lg border-2 transition-all text-sm font-semibold min-w-[120px] ${
+                selectedCity === city
+                  ? 'bg-indigo-600 border-indigo-400 text-white shadow-lg shadow-indigo-500/50 scale-105'
+                  : 'bg-gray-900/50 border-gray-700 text-gray-300 hover:bg-gray-700/50 hover:border-gray-600 hover:scale-105'
+              }`}
+            >
+              <div className="font-semibold">{city}</div>
+              {city === 'Delhi' && <div className="text-xs text-green-400 mt-1 font-bold">📍 HQ</div>}
+            </button>
+          ))}
+        </div>
+      </motion.div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Route List */}
         <div className="lg:col-span-2 space-y-4">
@@ -131,7 +210,29 @@ const Routes: React.FC = () => {
               <p className="text-sm text-gray-400 mt-1">Real-time route monitoring and optimization</p>
             </div>
             <div className="divide-y divide-gray-700">
-              {routes.map((route, index) => (
+              {isLoading ? (
+                <div className="p-6 text-center text-gray-400">Loading routes...</div>
+              ) : routes.length === 0 ? (
+                <div className="p-6 text-center">
+                  <p className="text-gray-400 mb-4">No active routes found. Select a city above to view available routes.</p>
+                  {selectedCity && cityRoutes.length === 0 && !loadingCityRoutes && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          const route: any = await apiService.optimizeRouteWithCO2('Delhi', selectedCity, 'balanced', 'truck');
+                          setCityRoutes([{ ...(route || {}), origin: 'Delhi', destination: selectedCity, status: 'available' }]);
+                        } catch (e) {
+                          console.error('Failed to optimize route:', e);
+                        }
+                      }}
+                      className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+                    >
+                      Optimize Route to {selectedCity}
+                    </button>
+                  )}
+                </div>
+              ) : (
+                routes.map((route, index) => (
                 <motion.div
                   key={route.id}
                   className={`p-6 cursor-pointer transition-all duration-200 hover:bg-gray-700/50 ${
@@ -193,7 +294,69 @@ const Routes: React.FC = () => {
                     </div>
                   </div>
                 </motion.div>
-              ))}
+                ))
+              )}
+              
+              {/* Show city-specific routes if a city is selected */}
+              {selectedCity && cityRoutes.length > 0 && (
+                <div className="p-4 border-t border-gray-700">
+                  <h3 className="text-lg font-semibold text-white mb-3">Routes for {selectedCity}</h3>
+                  {cityRoutes.map((route: any, idx: number) => (
+                    <div key={route.deliveryId || `city-route-${idx}`} className="bg-gray-900/50 p-4 rounded-lg mb-3 border border-gray-700">
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <div className="text-white font-semibold text-lg">
+                            {route.origin || 'Delhi'} → {route.destination || selectedCity}
+                          </div>
+                          {route.path && (
+                            <div className="text-sm text-gray-400 mt-1">
+                              Path: <span className="text-green-300">{route.path.join(' → ')}</span>
+                            </div>
+                          )}
+                        </div>
+                        <span className={`px-3 py-1 rounded-full text-xs ${
+                          route.status === 'active' ? 'bg-green-600/20 text-green-400' :
+                          route.status === 'available' ? 'bg-blue-600/20 text-blue-400' :
+                          'bg-gray-600/20 text-gray-400'
+                        }`}>
+                          {route.status || 'available'}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-4 text-sm">
+                        <div>
+                          <div className="text-gray-400">Distance</div>
+                          <div className="text-white font-semibold">{route.totalDistance?.toFixed(2) || 'N/A'} km</div>
+                        </div>
+                        <div>
+                          <div className="text-gray-400">Est. Time</div>
+                          <div className="text-white font-semibold">{route.estimatedTime?.toFixed(2) || 'N/A'} hrs</div>
+                        </div>
+                        <div>
+                          <div className="text-gray-400">Est. CO2</div>
+                          <div className="text-white font-semibold">{route.estimatedCO2?.toFixed(2) || 'N/A'} kg</div>
+                        </div>
+                      </div>
+                      {route.status === 'available' && (
+                        <button
+                          onClick={async () => {
+                            try {
+                              const deliveryId = `DEL-${Date.now()}-${selectedCity}`;
+                              await apiService.startDelivery(deliveryId, 'Delhi', selectedCity, 'truck', 'team-1');
+                              await loadRoutes();
+                              await loadCityRoutes(selectedCity);
+                            } catch (e) {
+                              console.error('Failed to start delivery:', e);
+                            }
+                          }}
+                          className="mt-3 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
+                        >
+                          Start Delivery
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </motion.div>
         </div>

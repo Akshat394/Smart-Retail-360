@@ -11,6 +11,7 @@ import { runSimulation } from '../utils/simulationEngine';
 import { detectMetricAnomalies } from '../utils/anomalyDetection';
 import { getMLExplanation, getMLRouteRecommendation, getMLStockOptimization } from '../utils/mlService';
 import { optimizeRoute } from '../services/routeOptimizer';
+import { routeOptimizationService } from '../services/routeOptimizationService';
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../utils/db';
 import fetch from 'node-fetch';
@@ -666,6 +667,194 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(result);
     } catch (e) {
       res.status(500).json({ error: 'ML stock optimization error' });
+    }
+  });
+
+  // Comprehensive Route Optimization with CO2 and Time tracking
+  app.post('/api/route-optimization/optimize', authenticate, async (req, res) => {
+    try {
+      const { origin, destination, mode = 'balanced', vehicleType = 'truck', useAStar = true } = req.body;
+      
+      if (!origin || !destination) {
+        return res.status(400).json({ error: 'Origin and destination are required' });
+      }
+
+      const result = await routeOptimizationService.optimizeRoute(
+        origin,
+        destination,
+        mode,
+        vehicleType,
+        useAStar
+      );
+
+      res.json(result);
+    } catch (error: any) {
+      console.error('Route optimization error:', error);
+      res.status(500).json({ error: error.message || 'Route optimization failed' });
+    }
+  });
+
+  // Start delivery - mint green token
+  app.post('/api/route-optimization/start-delivery', authenticate, async (req, res) => {
+    try {
+      const { deliveryId, origin, destination, vehicleType = 'truck', deliveryTeamId } = req.body;
+      
+      if (!deliveryId || !origin || !destination) {
+        return res.status(400).json({ error: 'deliveryId, origin, and destination are required' });
+      }
+
+      const route = await routeOptimizationService.startDelivery(
+        deliveryId,
+        origin,
+        destination,
+        vehicleType,
+        deliveryTeamId
+      );
+
+      // ROOT CAUSE FIX: Create route record in database when delivery starts
+      try {
+        const routeData = {
+          routeId: deliveryId,
+          destination: destination,
+          status: 'active',
+          optimizationMode: 'balanced' as const,
+          estimatedTime: Math.round(route.estimatedTime * 60), // Convert hours to minutes
+          distance: route.totalDistance,
+          fuelCost: route.totalDistance * 0.15, // Approximate fuel cost
+          co2Emission: route.estimatedCO2,
+          stops: route.path?.length || 1,
+          optimizationSavings: 0.15, // Default savings
+          coordinates: { lat: 0, lng: 0 }, // Will be updated with actual coordinates
+          driverId: undefined, // Can be assigned later
+          vehicleId: vehicleType,
+        };
+        
+        await storage.createRoute(routeData);
+        console.log(`Route ${deliveryId} persisted to database`);
+      } catch (dbError) {
+        console.error('Failed to persist route to database:', dbError);
+        // Don't fail the delivery if route persistence fails, but log it
+      }
+
+      // Mint green token based on estimated CO2
+      const tokenAmount = Math.round(route.estimatedCO2 * 10); // 1 token per 0.1 kg CO2
+      const token = await blockchainService.mintGreenTokens(
+        deliveryTeamId || 'system',
+        tokenAmount,
+        route.estimatedCO2,
+        undefined,
+        `Delivery ${deliveryId}: ${origin} to ${destination}`
+      );
+
+      res.json({
+        ...route,
+        tokenMinted: token.tokenId,
+        tokenAmount,
+      });
+    } catch (error: any) {
+      console.error('Start delivery error:', error);
+      res.status(500).json({ error: error.message || 'Failed to start delivery' });
+    }
+  });
+
+  // Complete delivery - burn token and award credits
+  app.post('/api/route-optimization/complete-delivery', authenticate, async (req, res) => {
+    try {
+      const { deliveryId, actualTime, actualCO2 } = req.body;
+      
+      if (!deliveryId || typeof actualTime !== 'number' || typeof actualCO2 !== 'number') {
+        return res.status(400).json({ error: 'deliveryId, actualTime, and actualCO2 are required' });
+      }
+
+      const result = await routeOptimizationService.completeDelivery(
+        deliveryId,
+        actualTime,
+        actualCO2
+      );
+
+      // ROOT CAUSE FIX: Update route record in database when delivery completes
+      try {
+        const routes = await storage.getAllRoutes();
+        const routeRecord = routes.find((r: any) => r.routeId === deliveryId);
+        
+        if (routeRecord) {
+          const optimizationSavings = result.co2Saved > 0 && result.timeSaved > 0 
+            ? (result.co2Saved / result.estimatedCO2) + (result.timeSaved / result.estimatedTime) 
+            : 0;
+            
+          await storage.updateRoute(routeRecord.id, {
+            status: 'completed',
+            estimatedTime: result.actualTime ? Math.round(result.actualTime * 60) : undefined, // Convert to minutes
+            co2Emission: result.actualCO2,
+            optimizationSavings: optimizationSavings,
+          });
+          console.log(`Route ${deliveryId} updated to completed status`);
+        }
+      } catch (dbError) {
+        console.error('Failed to update route in database:', dbError);
+        // Don't fail the completion if route update fails
+      }
+
+      // Burn tokens if performance criteria met
+      if (result.co2Saved > 0 && result.timeSaved > 0) {
+        const tokenAmount = Math.round(result.estimatedCO2 * 10);
+        await blockchainService.burnGreenTokens(
+          result.deliveryTeamId || 'system',
+          tokenAmount
+        );
+      }
+
+      // Broadcast sustainability update
+      const blockchainMetrics = await blockchainService.getSustainabilityMetrics();
+      clients.forEach((client) => {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(JSON.stringify({
+            type: 'delivery_completed',
+            data: {
+              deliveryId,
+              co2Saved: result.co2Saved,
+              timeSaved: result.timeSaved,
+              creditsAwarded: result.creditsAwarded,
+              tokenBurned: result.tokenBurned,
+              sustainabilityMetrics: blockchainMetrics,
+            },
+            timestamp: new Date().toISOString()
+          }));
+        }
+      });
+
+      res.json(result);
+    } catch (error: any) {
+      console.error('Complete delivery error:', error);
+      res.status(500).json({ error: error.message || 'Failed to complete delivery' });
+    }
+  });
+
+  // Get active deliveries
+  app.get('/api/route-optimization/active-deliveries', authenticate, async (req, res) => {
+    try {
+      const deliveries = routeOptimizationService.getActiveDeliveries();
+      res.json(deliveries);
+    } catch (error: any) {
+      console.error('Get active deliveries error:', error);
+      res.status(500).json({ error: error.message || 'Failed to get active deliveries' });
+    }
+  });
+
+  // Get delivery status
+  app.get('/api/route-optimization/delivery/:deliveryId', authenticate, async (req, res) => {
+    try {
+      const { deliveryId } = req.params;
+      const status = routeOptimizationService.getDeliveryStatus(deliveryId);
+      
+      if (!status) {
+        return res.status(404).json({ error: 'Delivery not found' });
+      }
+
+      res.json(status);
+    } catch (error: any) {
+      console.error('Get delivery status error:', error);
+      res.status(500).json({ error: error.message || 'Failed to get delivery status' });
     }
   });
 
@@ -2742,11 +2931,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (typeof distance !== 'number' || !['low','normal','high'].includes(priority) || !['small','medium','large'].includes(package_size)) {
         return res.status(400).json({ error: 'Invalid input' });
       }
-      const mlUrl = process.env.ML_SERVICE_URL || 'http://localhost:8000/recommend_delivery_mode';
-      const response = await axios.post(mlUrl, { distance, priority, package_size });
+      // Use environment variable or construct from standard port
+      const mlServiceUrl = process.env.ML_SERVICE_URL || `http://localhost:${process.env.ML_SERVICE_PORT || '8000'}`;
+      const mlUrl = `${mlServiceUrl}/recommend_delivery_mode`;
+      const response = await axios.post(mlUrl, { distance, priority, package_size }, {
+        timeout: 5000, // 5 second timeout
+        validateStatus: (status) => status < 500 // Don't throw on 4xx errors
+      });
       res.json(response.data);
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to get delivery mode recommendation' });
+    } catch (error: any) {
+      // If ML service is unavailable, return a fallback recommendation
+      const { distance, priority, package_size } = req.body;
+      let fallbackMode = 'truck';
+      let fallbackReason = 'Default delivery mode';
+      
+      if (distance <= 5 && package_size === 'small') {
+        fallbackMode = 'drone';
+        fallbackReason = 'Fastest for small packages under 5km';
+      } else if (package_size === 'large') {
+        fallbackMode = 'truck';
+        fallbackReason = 'Only trucks can handle large packages';
+      } else if (priority === 'high') {
+        fallbackMode = 'autonomous_vehicle';
+        fallbackReason = 'High priority orders get fastest available mode';
+      } else if (distance <= 15) {
+        fallbackMode = 'mini_truck';
+        fallbackReason = 'Efficient for medium distances';
+      }
+      
+      console.error('ML service error:', error.message);
+      res.json({ mode: fallbackMode, reason: fallbackReason });
     }
   });
 
@@ -2792,7 +3006,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Try ML service first
       let mlResult = null;
       try {
-        const mlUrl = process.env.ML_SERVICE_URL || 'http://localhost:8000/recommend_delivery_mode';
+        // Use environment variable or construct from standard port
+      const mlServiceUrl = process.env.ML_SERVICE_URL || `http://localhost:${process.env.ML_SERVICE_PORT || '8000'}`;
+      const mlUrl = `${mlServiceUrl}/recommend_delivery_mode`;
         const mlRes = await axios.post(mlUrl, { distance: 10, priority, package_size: packageSize }); // TODO: calculate real distance
         mlResult = mlRes.data;
       } catch (e) {

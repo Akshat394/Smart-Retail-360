@@ -1,7 +1,8 @@
 // @ts-ignore
 import fetch from 'node-fetch';
 
-const ML_SERVICE_URL = 'http://localhost:8000';
+// Use environment variable or construct from standard port
+const ML_SERVICE_URL = process.env.ML_SERVICE_URL || `http://localhost:${process.env.ML_SERVICE_PORT || '8000'}`;
 
 export async function getMLAnomalies(data: number[], params: any = {}) {
   const res = await fetch(`${ML_SERVICE_URL}/detect-anomalies`, {

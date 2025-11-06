@@ -80,7 +80,8 @@ const Analytics: React.FC = () => {
 
   const fetchModelStatus = async () => {
     try {
-      const response = await fetch('http://localhost:8001/models/status');
+      const ML_BASE = import.meta.env.VITE_ML_SERVICE_URL || 'http://localhost:8000';
+      const response = await fetch(`${ML_BASE}/models/status`);
       if (response.ok) {
         const status = await response.json();
         setModelStatus(status);
@@ -98,7 +99,8 @@ const Analytics: React.FC = () => {
       // Extract demand data from historical data
       const demandData = historicalData.map(item => item.demand);
 
-      const response = await fetch('http://localhost:8001/forecast', {
+      const ML_BASE = import.meta.env.VITE_ML_SERVICE_URL || 'http://localhost:8000';
+      const response = await fetch(`${ML_BASE}/forecast`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -118,7 +120,7 @@ const Analytics: React.FC = () => {
 
       const data: ForecastData = await response.json();
       setForecastData(data);
-    } catch (error) {
+    } catch (error: any) {
       setError(error instanceof Error ? error.message : 'An error occurred');
     } finally {
       setIsLoading(false);
@@ -136,7 +138,8 @@ const Analytics: React.FC = () => {
       // Simulate real training time
       await new Promise(resolve => setTimeout(resolve, 2000)); // 2 seconds
 
-      const response = await fetch('http://localhost:8001/train', {
+      const ML_BASE = import.meta.env.VITE_ML_SERVICE_URL || 'http://localhost:8000';
+      const response = await fetch(`${ML_BASE}/train`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -176,7 +179,7 @@ const Analytics: React.FC = () => {
       setTimeout(() => setHighlightedModel(null), 1500);
       // Immediately update the forecast after training completes
       await generateForecast();
-    } catch (error) {
+    } catch (error: any) {
       setError(error instanceof Error ? error.message : 'An error occurred');
     } finally {
       setIsLoading(false);
